@@ -60,6 +60,7 @@ class _NoxViewState extends State<NoxView> with SingleTickerProviderStateMixin {
       _lastY = y;
       desktop.moveWindow(x, y);
     }
+    desktop.showFeather(brain.hidden ? null : brain.featherPos, brain.featherOpacity);
 
     final over = brain.state == NoxState.dragged || brain.hitTest(desktop.cursor());
     if (over != _over) {

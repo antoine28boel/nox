@@ -8,6 +8,7 @@ import 'package:tray_manager/tray_manager.dart';
 import 'package:window_manager/window_manager.dart';
 
 import 'nox/brain.dart';
+import 'nox/feather.dart';
 import 'nox/nox_view.dart';
 import 'win/win_desktop.dart';
 
@@ -42,7 +43,14 @@ Future<void> main() async {
 
   launchAtStartup.setup(appName: 'Nox', appPath: Platform.resolvedExecutable);
 
-  final brain = NoxBrain(mode: mode)..scale = desktop.scale();
+  final pranks = {
+    for (final prank in NoxPrank.values)
+      if (prefs.getBool('prank_${prank.name}') ?? true) prank,
+  };
+
+  final brain = NoxBrain(mode: mode, pranks: pranks)..scale = desktop.scale();
+  final feather = renderFeather(desktop.scale());
+  desktop.setFeatherImage(feather.bgra, feather.width, feather.height);
   brain.spawn(desktop, desktop.cursor());
 
   runApp(NoxApp(brain: brain, desktop: desktop, prefs: prefs));
@@ -89,12 +97,34 @@ class _NoxAppState extends State<NoxApp> with TrayListener {
       MenuItem.checkbox(
           key: 'espiegle', label: 'Mode espiègle', checked: mode == NoxMode.espiegle),
       MenuItem.separator(),
+      MenuItem(key: 'pranks', label: 'Bêtises (mode espiègle)', disabled: true),
+      for (final prank in NoxPrank.values)
+        MenuItem.checkbox(
+            key: 'prank_${prank.name}',
+            label: _prankLabels[prank]!,
+            checked: widget.brain.pranks.contains(prank)),
+      MenuItem.separator(),
       MenuItem(key: 'recall', label: 'Rappeler Nox'),
       MenuItem.checkbox(
           key: 'startup', label: 'Lancer au démarrage de Windows', checked: _startup),
       MenuItem.separator(),
       MenuItem(key: 'quit', label: 'Quitter'),
     ]));
+  }
+
+  static const _prankLabels = {
+    NoxPrank.chase: 'Chasser le curseur',
+    NoxPrank.feather: 'Laisser une plume',
+    NoxPrank.peck: 'Picorer une icône',
+    NoxPrank.push: 'Pousser la fenêtre',
+  };
+
+  Future<void> _togglePrank(NoxPrank prank) async {
+    final pranks = widget.brain.pranks;
+    final on = !pranks.contains(prank);
+    on ? pranks.add(prank) : pranks.remove(prank);
+    await widget.prefs.setBool('prank_${prank.name}', on);
+    await _refreshMenu();
   }
 
   Future<void> _setMode(NoxMode mode) async {
@@ -111,6 +141,12 @@ class _NoxAppState extends State<NoxApp> with TrayListener {
 
   @override
   Future<void> onTrayMenuItemClick(MenuItem menuItem) async {
+    for (final prank in NoxPrank.values) {
+      if (menuItem.key == 'prank_${prank.name}') {
+        await _togglePrank(prank);
+        return;
+      }
+    }
     switch (menuItem.key) {
       case 'sage':
         await _setMode(NoxMode.sage);

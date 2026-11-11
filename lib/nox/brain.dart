@@ -9,18 +9,42 @@ enum NoxMode { sage, espiegle }
 
 enum NoxState { perched, flying, falling, dragged }
 
+/// Mischief Nox gets up to in espiègle mode. Each can be turned off.
+enum NoxPrank {
+  /// Swoops on the mouse cursor.
+  chase,
+
+  /// Leaves a feather behind when he takes off.
+  feather,
+
+  /// Lands next to a desktop icon and pecks at it.
+  peck,
+
+  /// Shoves the window he is perched on a little.
+  push,
+}
+
 /// Where Nox wants to sit: on a window's title bar, or on the taskbar edge.
 class Perch {
-  const Perch.window(this.handle, this.offsetX);
-  const Perch.floor(this.offsetX) : handle = null;
+  const Perch.window(this.handle, this.offsetX) : spot = null;
+  const Perch.floor(this.offsetX)
+      : handle = null,
+        spot = null;
+  const Perch.spot(Offset at)
+      : handle = null,
+        offsetX = 0,
+        spot = at;
 
-  /// Window handle, or null for the "floor" (top of the taskbar).
+  /// Window handle, or null for the "floor" (top of the taskbar) or a spot.
   final int? handle;
+
+  /// A fixed point on the desktop (next to an icon), in physical pixels.
+  final Offset? spot;
 
   /// For a window: distance from its left edge. For the floor: absolute x.
   final double offsetX;
 
-  bool get isFloor => handle == null;
+  bool get isFloor => handle == null && spot == null;
 }
 
 /// Geometry of Nox in logical pixels, relative to his feet.
@@ -40,11 +64,35 @@ class NoxGeometry {
 /// Pure Dart: everything it knows about the desktop comes from [Desktop],
 /// so it can be tested without Windows.
 class NoxBrain {
-  NoxBrain({math.Random? random, this.mode = NoxMode.sage})
-      : _rng = random ?? math.Random();
+  NoxBrain({math.Random? random, this.mode = NoxMode.sage, Set<NoxPrank>? pranks})
+      : _rng = random ?? math.Random(),
+        pranks = pranks ?? NoxPrank.values.toSet();
 
   final math.Random _rng;
   NoxMode mode;
+
+  /// Pranks Nox is allowed to play (only in espiègle mode).
+  final Set<NoxPrank> pranks;
+
+  /// True while Nox swoops on the cursor.
+  bool hunting = false;
+
+  /// How many times Nox caught the cursor / pecked at an icon.
+  int catches = 0;
+  int pecks = 0;
+
+  /// The feather Nox left behind (physical pixels), or null.
+  Offset? featherPos;
+  double featherOpacity = 0;
+  double _featherAge = 0;
+
+  double _peckUntil = 0;
+  double _pushLeft = 0;
+  double _pushDir = 1;
+  double _pushCarry = 0;
+
+  bool get _pecking => state == NoxState.perched && perch?.spot != null;
+  bool get _pushing => state == NoxState.perched && _pushLeft > 0;
 
   NoxState state = NoxState.falling;
 
@@ -93,7 +141,8 @@ class NoxBrain {
 
   /// Whether [point] (physical) is on Nox's body.
   bool hitTest(Offset point) {
-    if (hidden) return false;
+    // While he hunts the cursor, clicks must still reach what is under him.
+    if (hidden || hunting) return false;
     final c = pos + NoxGeometry.bodyCenter * _px;
     final dx = (point.dx - c.dx) / (NoxGeometry.bodyRadiusX * _px);
     final dy = (point.dy - c.dy) / (NoxGeometry.bodyRadiusY * _px);
@@ -143,6 +192,7 @@ class NoxBrain {
         _updateDragged(dt, d, cursor);
     }
 
+    _updateFeather(dt, d);
     _updatePetting(dt, cursor);
     _updateLook(dt, cursor);
     _updatePose(dt);
@@ -154,6 +204,8 @@ class NoxBrain {
   void _setState(NoxState s) {
     state = s;
     _stateTime = 0;
+    hunting = false;
+    if (s != NoxState.perched) _pushLeft = 0;
   }
 
   void _trackForeground(Desktop d) {
@@ -185,6 +237,14 @@ class NoxBrain {
       return;
     }
 
+    final spot = p.spot;
+    if (spot != null) {
+      // Pecking at an icon, then off again.
+      pos = spot;
+      if (_t >= _peckUntil) _takeOff(d);
+      return;
+    }
+
     if (p.isFloor) {
       final work = d.workArea(pos);
       pos = Offset(p.offsetX.clamp(work.left + 40 * _px, work.right - 40 * _px),
@@ -204,10 +264,22 @@ class NoxBrain {
         // The window was shaken: take off.
         pos = next;
         vel = Offset(-moved.dx.sign * 250 * _px, -350 * _px);
+        _maybeFeather(1);
         _takeOff(d);
         return;
       }
       pos = next;
+
+      if (_pushLeft > 0 && !sleeping) {
+        final step = math.min(_pushLeft, 60 * _px * dt);
+        _pushLeft -= step;
+        _pushCarry += step * _pushDir;
+        final whole = _pushCarry.truncate();
+        if (whole != 0) {
+          _pushCarry -= whole;
+          d.nudgeWindow(handle, whole);
+        }
+      }
 
       // Another window now covers the title bar where Nox sits.
       final below = Offset(pos.dx, pos.dy + 14 * _px);
@@ -242,10 +314,17 @@ class NoxBrain {
 
     if (_t >= _nextDecision) {
       _nextDecision = _t + _decisionInterval();
+      if (mode == NoxMode.espiegle &&
+          pranks.isNotEmpty &&
+          _rng.nextDouble() < 0.4 &&
+          _startPrank(d)) {
+        return;
+      }
       final roll = _rng.nextDouble();
       if (roll < 0.5) {
+        _maybeFeather(0.3);
         _takeOff(d);
-      } else if (roll < 0.8 && !p.isFloor) {
+      } else if (roll < 0.8 && p.handle != null) {
         _hopAlong(d);
       }
       // else: stays put, just looks around.
@@ -257,15 +336,117 @@ class NoxBrain {
       : 8 + _rng.nextDouble() * 17;
 
   void _hopAlong(Desktop d) {
-    final p = perch;
-    if (p == null || p.isFloor) return;
-    final r = d.windowRect(p.handle!);
+    final handle = perch?.handle;
+    if (handle == null) return;
+    final r = d.windowRect(handle);
     if (r == null) return;
     final maxX = math.max(40 * _px, r.width - NoxGeometry.captionButtons * _px);
     final x = 40 * _px + _rng.nextDouble() * (maxX - 40 * _px);
-    target = Perch.window(p.handle!, x);
+    target = Perch.window(handle, x);
     vel = Offset(0, -200 * _px);
     _setState(NoxState.flying);
+  }
+
+  // ---------------------------------------------------------------- pranks
+
+  bool _startPrank(Desktop d) {
+    final options = <NoxPrank>[
+      if (pranks.contains(NoxPrank.chase) && d.idleMillis() < 3000) NoxPrank.chase,
+      if (pranks.contains(NoxPrank.push) && perch?.handle != null) NoxPrank.push,
+      if (pranks.contains(NoxPrank.peck)) NoxPrank.peck,
+    ];
+    if (options.isEmpty) return false;
+    switch (options[_rng.nextInt(options.length)]) {
+      case NoxPrank.chase:
+        perch = null;
+        target = null;
+        vel = Offset(0, -250 * _px);
+        _setState(NoxState.flying);
+        hunting = true;
+        return true;
+      case NoxPrank.push:
+        return _startPush(d);
+      case NoxPrank.peck:
+        return _startPeck(d);
+      case NoxPrank.feather:
+        return false;
+    }
+  }
+
+  bool _startPush(Desktop d) {
+    final handle = perch?.handle;
+    if (handle == null) return false;
+    final r = d.windowRect(handle);
+    if (r == null) return false;
+    final work = d.workArea(pos);
+    final dir = _rng.nextBool() ? 1.0 : -1.0;
+    final dist = 24 * _px;
+    if (r.left + dir * dist < work.left || r.right + dir * dist > work.right) return false;
+    _pushDir = dir;
+    _pushLeft = dist;
+    _pushCarry = 0;
+    return true;
+  }
+
+  bool _startPeck(Desktop d) {
+    final icons = d.desktopIcons();
+    if (icons.isEmpty) return false;
+    final icon = icons[_rng.nextInt(icons.length)];
+    // Stands just to the right of the icon and leans over it.
+    target = Perch.spot(icon + Offset(48 * _px, 44 * _px));
+    perch = null;
+    vel = Offset(0, -250 * _px);
+    _setState(NoxState.flying);
+    return true;
+  }
+
+  void _updateHunting(double dt, Desktop d) {
+    final goal = d.cursor() - NoxGeometry.bodyCenter * _px;
+    final dir = goal - pos;
+    final dist = dir.distance;
+    final speed = math.min(950 * _px, dist * 4 + 80 * _px);
+    final desired = dist < 0.001 ? Offset.zero : dir / dist * speed;
+    vel = vel + (desired - vel) * (1 - math.exp(-dt * 6));
+    pos += vel * dt;
+
+    final caught = dist < 18 * _px;
+    if (caught || _stateTime > 5) {
+      hunting = false;
+      if (caught) {
+        catches++;
+        _happyUntil = _t + 1.5;
+      }
+      vel = Offset(vel.dx * 0.3, -300 * _px);
+      target = _chooseTarget(d);
+      _stateTime = 0;
+    }
+  }
+
+  void _maybeFeather(double chance) {
+    if (mode != NoxMode.espiegle || !pranks.contains(NoxPrank.feather)) return;
+    if (featherPos != null || _rng.nextDouble() >= chance) return;
+    featherPos = pos - Offset(0, 40 * _px);
+    featherOpacity = 1;
+    _featherAge = 0;
+  }
+
+  /// The feather drifts down to the taskbar, lies there, then fades away.
+  void _updateFeather(double dt, Desktop d) {
+    final f = featherPos;
+    if (f == null) return;
+    _featherAge += dt;
+    const life = 25.0;
+    if (_featherAge >= life) {
+      featherPos = null;
+      featherOpacity = 0;
+      return;
+    }
+    final floor = d.workArea(f).bottom - 6 * _px;
+    if (f.dy < floor) {
+      featherPos = Offset(f.dx + math.cos(_featherAge * 3) * 40 * _px * dt,
+          math.min(floor, f.dy + 70 * _px * dt));
+    }
+    featherOpacity = ((life - _featherAge) / 2).clamp(0.0, 1.0);
   }
 
   void _takeOff(Desktop d) {
@@ -307,6 +488,8 @@ class NoxBrain {
   }
 
   Offset? _targetPoint(Desktop d, Perch p) {
+    final spot = p.spot;
+    if (spot != null) return spot;
     if (p.isFloor) {
       final work = d.workArea(Offset(p.offsetX, pos.dy));
       return Offset(p.offsetX, work.bottom);
@@ -317,6 +500,10 @@ class NoxBrain {
   }
 
   void _updateFlying(double dt, Desktop d) {
+    if (hunting) {
+      _updateHunting(dt, d);
+      return;
+    }
     var t = target;
     var goal = t == null ? null : _targetPoint(d, t);
     if (t == null || goal == null) {
@@ -339,8 +526,8 @@ class NoxBrain {
     pos += vel * dt;
 
     if (dist < 4 * _px || (dist < 12 * _px && vel.distance < 120 * _px)) {
-      if (!t.isFloor &&
-          !d.isTopAt(t.handle!, Offset(goal.dx, goal.dy + 14 * _px))) {
+      final handle = t.handle;
+      if (handle != null && !d.isTopAt(handle, Offset(goal.dx, goal.dy + 14 * _px))) {
         target = _chooseTarget(d);
         return;
       }
@@ -348,6 +535,10 @@ class NoxBrain {
       vel = Offset.zero;
       perch = t;
       target = null;
+      if (t.spot != null) {
+        pecks++;
+        _peckUntil = _t + 2.4;
+      }
       _nextDecision = _t + _decisionInterval();
       _setState(NoxState.perched);
     } else if (_stateTime > 12) {
@@ -454,13 +645,19 @@ class NoxBrain {
       ..happy = _t < _happyUntil
       ..surprised = falling || dragged
       ..eyeOpen = sleeping ? 0 : (_t < _blinkUntil ? 0.05 : 1)
-      ..look = (sleeping || falling) ? Offset.zero : _look
+      ..look = (sleeping || falling)
+          ? Offset.zero
+          : (_pecking ? const Offset(-0.8, 0.7) : _look)
       ..headTurn = sleeping ? 0 : _headTurn
       ..wingSpread = flying ? 0.9 : (falling ? 1.0 : (dragged ? 0.35 : 0))
       ..wingFlap = (flying || falling) ? math.sin(_flapPhase) * 0.55 : 0
       ..feetTucked = flying
       ..tilt = flying
           ? (vel.dx / (900 * _px)).clamp(-0.35, 0.35)
-          : (dragged ? math.sin(_t * 6) * 0.12 : 0);
+          : dragged
+              ? math.sin(_t * 6) * 0.12
+              : _pecking
+                  ? -0.5 * math.max(0.0, math.sin(_stateTime * 11))
+                  : (_pushing ? _pushDir * 0.2 : 0.0);
   }
 }

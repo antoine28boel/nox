@@ -1,10 +1,12 @@
 import 'dart:ffi';
+import 'dart:typed_data';
 import 'dart:ui';
 
 import 'package:ffi/ffi.dart';
 import 'package:win32/win32.dart';
 
 import '../nox/desktop.dart';
+import 'native.dart';
 
 /// [Desktop] backed by the Win32 API.
 class WinDesktop implements Desktop {
@@ -70,6 +72,55 @@ class WinDesktop implements Desktop {
     final ex = GetWindowLongPtr(ownWindow, GWL_EXSTYLE);
     final want = on ? ex | WS_EX_TRANSPARENT : ex & ~WS_EX_TRANSPARENT;
     if (want != ex) SetWindowLongPtr(ownWindow, GWL_EXSTYLE, want);
+  }
+
+  FeatherWindow? _feather;
+
+  /// Prepares the feather Nox can leave behind ([bgra]: premultiplied BGRA).
+  void setFeatherImage(Uint8List bgra, int width, int height) {
+    _feather ??= FeatherWindow(bgra, width, height);
+  }
+
+  /// Shows the feather centered on [at] (physical pixels), or hides it.
+  void showFeather(Offset? at, double opacity) {
+    final feather = _feather;
+    if (feather == null) return;
+    if (at == null || opacity <= 0) {
+      feather.hide();
+    } else {
+      feather.show(at.dx.round(), at.dy.round(), (opacity.clamp(0.0, 1.0) * 255).round());
+    }
+  }
+
+  @override
+  void nudgeWindow(int handle, int dx) {
+    if (handle == ownWindow || IsWindow(handle) == 0 || IsZoomed(handle) != 0) return;
+    if (GetWindowRect(handle, _rect) == 0) return;
+    SetWindowPos(handle, 0, _rect.ref.left + dx, _rect.ref.top, 0, 0,
+        SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_ASYNCWINDOWPOS);
+  }
+
+  @override
+  List<Offset> desktopIcons() {
+    final visible = <Offset>[];
+    final pt = calloc<POINT>();
+    try {
+      for (final icon in readDesktopIcons()) {
+        pt.ref
+          ..x = icon.dx.round()
+          ..y = icon.dy.round();
+        final hit = WindowFromPoint(pt.ref);
+        if (hit == 0) continue;
+        final root = GetAncestor(hit, GA_ROOT);
+        // Only icons that no window covers.
+        if (root == ownWindow || const {'Progman', 'WorkerW'}.contains(_classOf(root))) {
+          visible.add(icon);
+        }
+      }
+    } finally {
+      calloc.free(pt);
+    }
+    return visible;
   }
 
   @override

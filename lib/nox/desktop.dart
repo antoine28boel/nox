@@ -35,4 +35,10 @@ abstract class Desktop {
 
   /// Whether the foreground window covers its whole monitor (game, video…).
   bool foregroundIsFullscreen();
+
+  /// Moves [handle] horizontally by [dx] pixels (Nox pushing his perch).
+  void nudgeWindow(int handle, int dx);
+
+  /// Centers of the desktop icons that no window covers.
+  List<Offset> desktopIcons();
 }
