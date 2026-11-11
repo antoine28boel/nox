@@ -52,6 +52,26 @@ class WinDesktop implements Desktop {
         SWP_NOSIZE | SWP_NOACTIVATE | SWP_ASYNCWINDOWPOS);
   }
 
+  /// Makes Nox's window a fully opaque layered window, once at startup.
+  ///
+  /// A layered window is not drawn at all until it has layered attributes, so
+  /// the style stays on for good and [setClickThrough] only toggles
+  /// `WS_EX_TRANSPARENT`.
+  void makeLayered() {
+    final ex = GetWindowLongPtr(ownWindow, GWL_EXSTYLE);
+    SetWindowLongPtr(ownWindow, GWL_EXSTYLE, ex | WS_EX_LAYERED);
+    SetLayeredWindowAttributes(ownWindow, 0, 255, _lwaAlpha);
+  }
+
+  static const _lwaAlpha = 0x2;
+
+  /// Lets mouse clicks pass through Nox's window (true) or catches them.
+  void setClickThrough(bool on) {
+    final ex = GetWindowLongPtr(ownWindow, GWL_EXSTYLE);
+    final want = on ? ex | WS_EX_TRANSPARENT : ex & ~WS_EX_TRANSPARENT;
+    if (want != ex) SetWindowLongPtr(ownWindow, GWL_EXSTYLE, want);
+  }
+
   @override
   Offset cursor() {
     GetCursorPos(_point);

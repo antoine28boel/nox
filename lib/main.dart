@@ -25,12 +25,16 @@ Future<void> main() async {
     titleBarStyle: TitleBarStyle.hidden,
     title: 'Nox',
   );
+  final desktop = WinDesktop(WinDesktop.findOwnWindow());
   await windowManager.waitUntilReadyToShow(options, () async {
     await windowManager.setAsFrameless();
     await windowManager.setHasShadow(false);
     await windowManager.setResizable(false);
     await acrylic.Window.setEffect(effect: acrylic.WindowEffect.transparent);
-    await windowManager.show();
+    desktop.makeLayered();
+    desktop.setClickThrough(true);
+    // Inactive: Nox must not take the focus from the app in use.
+    await windowManager.show(inactive: true);
   });
 
   final prefs = await SharedPreferences.getInstance();
@@ -38,7 +42,6 @@ Future<void> main() async {
 
   launchAtStartup.setup(appName: 'Nox', appPath: Platform.resolvedExecutable);
 
-  final desktop = WinDesktop(WinDesktop.findOwnWindow());
   final brain = NoxBrain(mode: mode)..scale = desktop.scale();
   brain.spawn(desktop, desktop.cursor());
 
@@ -142,7 +145,7 @@ class _NoxAppState extends State<NoxApp> with TrayListener {
         body: NoxView(
           brain: widget.brain,
           desktop: widget.desktop,
-          onMouseOver: (over) => windowManager.setIgnoreMouseEvents(!over),
+          onMouseOver: (over) => widget.desktop.setClickThrough(!over),
         ),
       ),
     );
