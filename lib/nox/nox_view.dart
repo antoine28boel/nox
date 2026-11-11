@@ -16,6 +16,7 @@ class NoxView extends StatefulWidget {
     required this.brain,
     required this.desktop,
     required this.onMouseOver,
+    required this.onDoubleClick,
   });
 
   final NoxBrain brain;
@@ -24,6 +25,9 @@ class NoxView extends StatefulWidget {
   /// Called when the cursor enters (true) or leaves (false) Nox's body, so
   /// the window only catches clicks on Nox and lets the rest through.
   final ValueChanged<bool> onMouseOver;
+
+  /// Called when Nox is double-clicked (opens the "Aujourd'hui" panel).
+  final VoidCallback onDoubleClick;
 
   @override
   State<NoxView> createState() => _NoxViewState();
@@ -36,6 +40,7 @@ class _NoxViewState extends State<NoxView> with SingleTickerProviderStateMixin {
   int _lastY = -1 << 30;
   // Start as "over" so the first frame turns click-through on.
   bool _over = true;
+  DateTime? _lastDown;
 
   @override
   void initState() {
@@ -81,7 +86,17 @@ class _NoxViewState extends State<NoxView> with SingleTickerProviderStateMixin {
   Widget build(BuildContext context) {
     return Listener(
       behavior: HitTestBehavior.opaque,
-      onPointerDown: (_) => widget.brain.startDrag(widget.desktop.cursor()),
+      onPointerDown: (_) {
+        final now = DateTime.now();
+        final last = _lastDown;
+        if (last != null && now.difference(last) < const Duration(milliseconds: 450)) {
+          _lastDown = null;
+          widget.onDoubleClick();
+          return;
+        }
+        _lastDown = now;
+        widget.brain.startDrag(widget.desktop.cursor());
+      },
       child: CustomPaint(
         size: kNoxWindowSize,
         painter: OwlPainter(pose: widget.brain.pose, feet: kNoxFeet),

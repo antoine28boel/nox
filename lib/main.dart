@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -8,6 +9,9 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:tray_manager/tray_manager.dart';
 import 'package:window_manager/window_manager.dart';
 
+import 'assistant/ha_client.dart';
+import 'assistant/today.dart';
+import 'assistant/today_panel.dart';
 import 'nox/brain.dart';
 import 'nox/feather.dart';
 import 'nox/nox_view.dart';
@@ -78,6 +82,89 @@ class _NoxAppState extends State<NoxApp> with TrayListener {
   Timer? _firstCheck;
   Timer? _dailyCheck;
 
+  // "Aujourd'hui" panel.
+  bool _panelOpen = false;
+  TodayData? _today;
+  bool _todayLoading = false;
+  String? _todayError;
+  Timer? _todayTimer;
+
+  String get _haUrl => widget.prefs.getString('ha_url') ?? '';
+  String get _haToken => widget.prefs.getString('ha_token') ?? '';
+  bool get _haConfigured => _haUrl.isNotEmpty && _haToken.isNotEmpty;
+
+  void _loadCachedToday() {
+    final cached = widget.prefs.getString('today_cache');
+    if (cached == null) return;
+    try {
+      _today = TodayData.fromJson(jsonDecode(cached));
+    } on FormatException {
+      _today = null;
+    }
+  }
+
+  /// Reads today's data from Home Assistant; keeps the last one if it fails.
+  Future<void> _refreshToday() async {
+    if (!_haConfigured || _todayLoading) return;
+    setState(() => _todayLoading = true);
+    String? error;
+    try {
+      final data = await HaClient(_haUrl, _haToken).fetchToday(DateTime.now());
+      _today = data;
+      await widget.prefs.setString('today_cache', jsonEncode(data.toJson()));
+    } on HaException catch (e) {
+      error = e.message;
+    } catch (_) {
+      error = 'Home Assistant injoignable';
+    }
+    if (!mounted) return;
+    setState(() {
+      _todayLoading = false;
+      _todayError = error;
+    });
+  }
+
+  String get _todayStatus {
+    if (!_haConfigured) return '';
+    if (_todayLoading) return 'Actualisation…';
+    final today = _today;
+    final since = today == null ? '' : ' — données de ${hhmm(today.fetchedAt)}';
+    final error = _todayError;
+    if (error != null) return '$error$since';
+    return today == null ? '' : 'À jour à ${hhmm(today.fetchedAt)}';
+  }
+
+  Future<String?> _saveHaSettings(String url, String token) async {
+    final base = normalizeHaUrl(url);
+    if (base == null) return 'Adresse invalide.';
+    final secret = token.trim().isEmpty ? _haToken : token.trim();
+    if (secret.isEmpty) return 'Il manque le jeton.';
+    try {
+      await HaClient(base, secret).ping();
+    } on HaException catch (e) {
+      return e.message;
+    } catch (_) {
+      return 'Home Assistant injoignable à cette adresse.';
+    }
+    await widget.prefs.setString('ha_url', base);
+    await widget.prefs.setString('ha_token', secret);
+    unawaited(_refreshToday());
+    return null;
+  }
+
+  void _openPanel() {
+    if (_panelOpen) return;
+    widget.desktop.enterPanel(widget.brain.pos, kPanelSize);
+    setState(() => _panelOpen = true);
+    unawaited(_refreshToday());
+  }
+
+  void _closePanel() {
+    if (!_panelOpen) return;
+    widget.desktop.leavePanel(kNoxWindowSize);
+    setState(() => _panelOpen = false);
+  }
+
   @override
   void initState() {
     super.initState();
@@ -85,7 +172,13 @@ class _NoxAppState extends State<NoxApp> with TrayListener {
     _initTray();
     _firstCheck = Timer(const Duration(seconds: 20), _checkForUpdate);
     _dailyCheck = Timer.periodic(const Duration(hours: 24), (_) => _checkForUpdate());
+    _loadCachedToday();
+    // Keeps the offline cache fresh even when the panel stays closed.
+    _todayTimer = Timer.periodic(const Duration(minutes: 30), (_) => _refreshToday());
+    _firstToday = Timer(const Duration(seconds: 5), _refreshToday);
   }
+
+  Timer? _firstToday;
 
   /// Looks for a newer build; if there is one, Nox brings it as news.
   /// [manual] also re-offers a build that was declined before.
@@ -165,6 +258,7 @@ class _NoxAppState extends State<NoxApp> with TrayListener {
             label: _prankLabels[prank]!,
             checked: widget.brain.pranks.contains(prank)),
       MenuItem.separator(),
+      MenuItem(key: 'today', label: "Aujourd'hui"),
       MenuItem(key: 'recall', label: 'Rappeler Nox'),
       MenuItem.checkbox(
           key: 'startup', label: 'Lancer au démarrage de Windows', checked: _startup),
@@ -215,7 +309,10 @@ class _NoxAppState extends State<NoxApp> with TrayListener {
         await _setMode(NoxMode.sage);
       case 'espiegle':
         await _setMode(NoxMode.espiegle);
+      case 'today':
+        _panelOpen ? _closePanel() : _openPanel();
       case 'recall':
+        _closePanel();
         widget.brain.recall(widget.desktop, widget.desktop.cursor());
       case 'startup':
         _startup ? await launchAtStartup.disable() : await launchAtStartup.enable();
@@ -236,6 +333,8 @@ class _NoxAppState extends State<NoxApp> with TrayListener {
   void dispose() {
     _firstCheck?.cancel();
     _dailyCheck?.cancel();
+    _todayTimer?.cancel();
+    _firstToday?.cancel();
     trayManager.removeListener(this);
     super.dispose();
   }
@@ -245,13 +344,30 @@ class _NoxAppState extends State<NoxApp> with TrayListener {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
       color: Colors.transparent,
+      theme: ThemeData(
+        brightness: Brightness.dark,
+        colorSchemeSeed: const Color(0xFFF2B53A),
+        useMaterial3: true,
+      ),
       home: Scaffold(
         backgroundColor: Colors.transparent,
-        body: NoxView(
-          brain: widget.brain,
-          desktop: widget.desktop,
-          onMouseOver: (over) => widget.desktop.setClickThrough(!over),
-        ),
+        body: _panelOpen
+            ? TodayPanel(
+                now: DateTime.now(),
+                data: _today,
+                status: _todayStatus,
+                configured: _haConfigured,
+                haUrl: _haUrl,
+                onRefresh: _refreshToday,
+                onClose: _closePanel,
+                onSaveSettings: _saveHaSettings,
+              )
+            : NoxView(
+                brain: widget.brain,
+                desktop: widget.desktop,
+                onMouseOver: (over) => widget.desktop.setClickThrough(!over),
+                onDoubleClick: _openPanel,
+              ),
       ),
     );
   }

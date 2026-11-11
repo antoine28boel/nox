@@ -153,6 +153,22 @@ void main() {
     expect(b.state, NoxState.perched);
   });
 
+  test('a plain click leaves him on his perch', () {
+    b.spawn(d, const Offset(800, 500));
+    run(b, d, 6);
+    final before = b.pos;
+    d.cursorPos = b.pos + const Offset(0, -50);
+    b.startDrag(d.cursorPos);
+    d.button = true;
+    run(b, d, 0.1);
+    expect(b.state, NoxState.dragged);
+    d.button = false;
+    b.update(1 / 60, d);
+    expect(b.state, NoxState.perched);
+    expect(b.perch?.handle, 1);
+    expect(b.pos, before);
+  });
+
   test('falls asleep when the user is idle and wakes up on input', () {
     b.spawn(d, const Offset(800, 500));
     run(b, d, 6);

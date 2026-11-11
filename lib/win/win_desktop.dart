@@ -1,4 +1,5 @@
 import 'dart:ffi';
+import 'dart:math' as math;
 import 'dart:typed_data';
 import 'dart:ui';
 
@@ -72,6 +73,33 @@ class WinDesktop implements Desktop {
     final ex = GetWindowLongPtr(ownWindow, GWL_EXSTYLE);
     final want = on ? ex | WS_EX_TRANSPARENT : ex & ~WS_EX_TRANSPARENT;
     if (want != ex) SetWindowLongPtr(ownWindow, GWL_EXSTYLE, want);
+  }
+
+  /// Turns Nox's window into a normal, focusable window of [logical] size
+  /// placed above [feet], for the "Aujourd'hui" panel.
+  void enterPanel(Offset feet, Size logical) {
+    final s = scale();
+    final w = (logical.width * s).round();
+    final h = (logical.height * s).round();
+    final work = workArea(feet);
+    final margin = 8 * s;
+    final x = (feet.dx - w / 2)
+        .clamp(work.left + margin, math.max(work.left + margin, work.right - w - margin));
+    final y = (feet.dy - h)
+        .clamp(work.top + margin, math.max(work.top + margin, work.bottom - h - margin));
+    final ex = GetWindowLongPtr(ownWindow, GWL_EXSTYLE);
+    SetWindowLongPtr(ownWindow, GWL_EXSTYLE, ex & ~(WS_EX_NOACTIVATE | WS_EX_TRANSPARENT));
+    SetWindowPos(ownWindow, HWND_TOPMOST, x.round(), y.round(), w, h, SWP_SHOWWINDOW);
+    SetForegroundWindow(ownWindow);
+  }
+
+  /// Back to the small window that never takes the focus.
+  void leavePanel(Size logical) {
+    final s = scale();
+    final ex = GetWindowLongPtr(ownWindow, GWL_EXSTYLE);
+    SetWindowLongPtr(ownWindow, GWL_EXSTYLE, ex | WS_EX_NOACTIVATE);
+    SetWindowPos(ownWindow, HWND_TOPMOST, 0, 0, (logical.width * s).round(),
+        (logical.height * s).round(), SWP_NOMOVE | SWP_NOACTIVATE);
   }
 
   FeatherWindow? _feather;

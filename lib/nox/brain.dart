@@ -89,6 +89,11 @@ class NoxBrain {
   double featherOpacity = 0;
   double _featherAge = 0;
 
+  // Where Nox was when the mouse went down on him: a plain click (no drag)
+  // puts him back there instead of making him fall.
+  Perch? _clickPerch;
+  Offset _clickPos = Offset.zero;
+
   double _peckUntil = 0;
   double _pushLeft = 0;
   double _pushDir = 1;
@@ -155,6 +160,8 @@ class NoxBrain {
   /// Called when the user presses the mouse on Nox.
   void startDrag(Offset cursor) {
     _grabOffset = pos - cursor;
+    _clickPerch = state == NoxState.perched ? perch : null;
+    _clickPos = pos;
     vel = Offset.zero;
     sleeping = false;
     perch = null;
@@ -585,6 +592,17 @@ class NoxBrain {
     }
     pos = next;
     if (!d.leftButtonDown()) {
+      final from = _clickPerch;
+      if (from != null &&
+          from.spot == null &&
+          _stateTime < 0.4 &&
+          (pos - _clickPos).distance < 6 * _px) {
+        pos = _clickPos;
+        vel = Offset.zero;
+        perch = from;
+        _setState(NoxState.perched);
+        return;
+      }
       final max = 2500 * _px;
       if (vel.distance > max) vel = vel / vel.distance * max;
       _recoverAt = 0.6;
