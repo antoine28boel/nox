@@ -74,6 +74,9 @@ class NoxBrain {
   /// Pranks Nox is allowed to play (only in espiègle mode).
   final Set<NoxPrank> pranks;
 
+  /// Nox holds an envelope: he has news waiting for your answer.
+  bool carrying = false;
+
   /// True while Nox swoops on the cursor.
   bool hunting = false;
 
@@ -643,6 +646,7 @@ class NoxBrain {
       ..time = _t
       ..sleeping = sleeping
       ..happy = _t < _happyUntil
+      ..carrying = carrying
       ..surprised = falling || dragged
       ..eyeOpen = sleeping ? 0 : (_t < _blinkUntil ? 0.05 : 1)
       ..look = (sleeping || falling)

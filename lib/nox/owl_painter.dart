@@ -45,6 +45,7 @@ class OwlPainter extends CustomPainter {
     _body(canvas);
     _face(canvas);
     _feet(canvas);
+    if (pose.carrying) _envelope(canvas);
     if (pose.sleeping) _zzz(canvas);
 
     canvas.restore();
@@ -179,6 +180,25 @@ class OwlPainter extends CustomPainter {
           _fill(_faceDisc));
       canvas.restore();
     }
+  }
+
+  /// The envelope Nox holds in his beak when he has news for you.
+  void _envelope(Canvas canvas) {
+    final dx = pose.headTurn * 12;
+    final r = Rect.fromCenter(center: Offset(200 + dx, 304), width: 70, height: 46);
+    final paper = RRect.fromRectAndRadius(r, const Radius.circular(5));
+    final edge = Paint()
+      ..color = _chevron
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 3
+      ..strokeJoin = StrokeJoin.round;
+    canvas.drawRRect(paper, _fill(Colors.white));
+    canvas.drawRRect(paper, edge);
+    final flap = Path()
+      ..moveTo(r.left + 3, r.top + 3)
+      ..lineTo(r.center.dx, r.center.dy + 4)
+      ..lineTo(r.right - 3, r.top + 3);
+    canvas.drawPath(flap, edge);
   }
 
   void _feet(Canvas canvas) {

@@ -10,6 +10,9 @@ class NoxPose extends ChangeNotifier {
   bool happy = false;
   bool surprised = false;
 
+  /// Holds an envelope in his beak: he has news waiting for an answer.
+  bool carrying = false;
+
   /// 0 = closed, 1 = open.
   double eyeOpen = 1;
 

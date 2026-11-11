@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -10,6 +11,7 @@ import 'package:window_manager/window_manager.dart';
 import 'nox/brain.dart';
 import 'nox/feather.dart';
 import 'nox/nox_view.dart';
+import 'update/updater.dart';
 import 'win/win_desktop.dart';
 
 Future<void> main() async {
@@ -70,11 +72,58 @@ class NoxApp extends StatefulWidget {
 class _NoxAppState extends State<NoxApp> with TrayListener {
   bool _startup = false;
 
+  /// An update Nox is offering, waiting for a yes or a no.
+  UpdateInfo? _update;
+  bool _installing = false;
+  Timer? _firstCheck;
+  Timer? _dailyCheck;
+
   @override
   void initState() {
     super.initState();
     trayManager.addListener(this);
     _initTray();
+    _firstCheck = Timer(const Duration(seconds: 20), _checkForUpdate);
+    _dailyCheck = Timer.periodic(const Duration(hours: 24), (_) => _checkForUpdate());
+  }
+
+  /// Looks for a newer build; if there is one, Nox brings it as news.
+  /// [manual] also re-offers a build that was declined before.
+  Future<void> _checkForUpdate({bool manual = false}) async {
+    if (_installing) return;
+    final update = await checkForUpdate();
+    if (!mounted) return;
+    final declined = widget.prefs.getInt('update_declined') ?? 0;
+    if (update == null || (!manual && update.build <= declined)) return;
+    _update = update;
+    widget.brain.carrying = true;
+    await _refreshMenu();
+  }
+
+  Future<void> _answerUpdate(bool accept) async {
+    final update = _update;
+    if (update == null || _installing) return;
+    if (!accept) {
+      _update = null;
+      widget.brain.carrying = false;
+      await widget.prefs.setInt('update_declined', update.build);
+      await _refreshMenu();
+      return;
+    }
+    _installing = true;
+    await _refreshMenu();
+    if (await downloadAndInstall(update)) {
+      await _quit();
+    }
+    // The download failed: keep the offer so it can be tried again.
+    _installing = false;
+    await _refreshMenu();
+  }
+
+  Future<void> _quit() async {
+    await trayManager.destroy();
+    await windowManager.destroy();
+    exit(0);
   }
 
   Future<void> _initTray() async {
@@ -90,9 +139,21 @@ class _NoxAppState extends State<NoxApp> with TrayListener {
 
   Future<void> _refreshMenu() async {
     final mode = widget.brain.mode;
+    final update = _update;
     await trayManager.setContextMenu(Menu(items: [
       MenuItem(key: 'title', label: 'Nox', disabled: true),
       MenuItem.separator(),
+      if (update != null) ...[
+        MenuItem(
+            key: 'update_title',
+            label: _installing
+                ? 'Mise à jour en cours…'
+                : 'Nox apporte une mise à jour (version ${update.build})',
+            disabled: true),
+        if (!_installing) MenuItem(key: 'update_accept', label: 'Accepter'),
+        if (!_installing) MenuItem(key: 'update_decline', label: 'Refuser'),
+        MenuItem.separator(),
+      ],
       MenuItem.checkbox(key: 'sage', label: 'Mode sage', checked: mode == NoxMode.sage),
       MenuItem.checkbox(
           key: 'espiegle', label: 'Mode espiègle', checked: mode == NoxMode.espiegle),
@@ -107,6 +168,8 @@ class _NoxAppState extends State<NoxApp> with TrayListener {
       MenuItem(key: 'recall', label: 'Rappeler Nox'),
       MenuItem.checkbox(
           key: 'startup', label: 'Lancer au démarrage de Windows', checked: _startup),
+      if (update == null)
+        MenuItem(key: 'update_check', label: 'Rechercher une mise à jour'),
       MenuItem.separator(),
       MenuItem(key: 'quit', label: 'Quitter'),
     ]));
@@ -158,15 +221,21 @@ class _NoxAppState extends State<NoxApp> with TrayListener {
         _startup ? await launchAtStartup.disable() : await launchAtStartup.enable();
         _startup = await launchAtStartup.isEnabled();
         await _refreshMenu();
+      case 'update_accept':
+        await _answerUpdate(true);
+      case 'update_decline':
+        await _answerUpdate(false);
+      case 'update_check':
+        await _checkForUpdate(manual: true);
       case 'quit':
-        await trayManager.destroy();
-        await windowManager.destroy();
-        exit(0);
+        await _quit();
     }
   }
 
   @override
   void dispose() {
+    _firstCheck?.cancel();
+    _dailyCheck?.cancel();
     trayManager.removeListener(this);
     super.dispose();
   }
