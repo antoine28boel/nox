@@ -18,6 +18,9 @@ int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
   ::CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
 
   flutter::DartProject project(L"data");
+  // Integrated GPU: on laptops with two GPUs, Nox must not wake the
+  // discrete one (it drains the battery and starts its vendor's utility).
+  project.set_gpu_preference(flutter::GpuPreference::LowPowerPreference);
 
   std::vector<std::string> command_line_arguments =
       GetCommandLineArguments();
