@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/gestures.dart' show kSecondaryMouseButton;
 import 'package:flutter/scheduler.dart';
 import 'package:flutter/widgets.dart';
@@ -10,7 +12,8 @@ import 'owl_painter.dart';
 const kNoxWindowSize = NoxGeometry.windowSize;
 const kNoxFeet = NoxGeometry.windowFeet;
 
-/// Runs Nox's brain every frame, moves his window and draws him.
+/// Runs Nox's brain, moves his window and draws him: every frame while he
+/// moves, a few times a second when he is calm ([NoxBrain.frameRate]).
 class NoxView extends StatefulWidget {
   const NoxView({
     super.key,
@@ -44,6 +47,8 @@ class NoxView extends StatefulWidget {
 
 class _NoxViewState extends State<NoxView> with SingleTickerProviderStateMixin {
   late final Ticker _ticker;
+  Timer? _timer;
+  final _clock = Stopwatch()..start();
   Duration _last = Duration.zero;
   int _lastX = -1 << 30;
   int _lastY = -1 << 30;
@@ -54,10 +59,27 @@ class _NoxViewState extends State<NoxView> with SingleTickerProviderStateMixin {
   @override
   void initState() {
     super.initState();
-    _ticker = createTicker(_tick)..start();
+    _ticker = createTicker((_) => _step());
+    _schedule();
   }
 
-  void _tick(Duration elapsed) {
+  /// Ticker (every frame) for a smooth Nox, timer when he can go slower.
+  void _schedule() {
+    final fps = widget.brain.frameRate;
+    if (fps >= 60) {
+      _timer?.cancel();
+      _timer = null;
+      if (!_ticker.isActive) _ticker.start();
+      return;
+    }
+    if (_ticker.isActive) _ticker.stop();
+    _timer?.cancel();
+    _timer = Timer(Duration(microseconds: (1e6 / fps).round()), _step);
+  }
+
+  void _step() {
+    if (!mounted) return;
+    final elapsed = _clock.elapsed;
     final dt = (elapsed - _last).inMicroseconds / 1e6;
     _last = elapsed;
     final brain = widget.brain;
@@ -86,10 +108,12 @@ class _NoxViewState extends State<NoxView> with SingleTickerProviderStateMixin {
     if (brain.takeNestMoved()) widget.onNestMoved();
 
     brain.pose.changed();
+    _schedule();
   }
 
   @override
   void dispose() {
+    _timer?.cancel();
     _ticker.dispose();
     super.dispose();
   }

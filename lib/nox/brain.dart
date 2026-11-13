@@ -137,6 +137,9 @@ class NoxBrain {
   double? _followAt;
   Offset _grabOffset = Offset.zero;
   Offset _lastCursor = Offset.zero;
+
+  /// Seconds since the cursor last moved.
+  double _cursorStill = 0;
   double _petAmount = 0;
   Offset _look = Offset.zero;
   double _headTurn = 0;
@@ -334,8 +337,33 @@ class NoxBrain {
     _recoverAt = 0.2;
   }
 
+  /// How often Nox needs an update, in frames per second: smooth while
+  /// something moves, only a few times a second when he just breathes,
+  /// blinks or sleeps, to spare the battery.
+  double get frameRate {
+    if (hidden) return 2;
+    final moving = state == NoxState.flying ||
+        state == NoxState.falling ||
+        state == NoxState.dragged ||
+        hunting ||
+        _pecking ||
+        _pushing ||
+        _petAmount > 0 ||
+        featherPos != null ||
+        _nestPress != null ||
+        (_island > 0 && _island < 1) ||
+        (_expand > 0 && _expand < 1) ||
+        (_retract > 0 && _retract < 1);
+    if (moving) return 60;
+    if (sleeping) return 5;
+    // His eyes follow the cursor: smooth enough while it moves.
+    return _cursorStill < 1 ? 30 : 8;
+  }
+
   void update(double dt, Desktop d) {
-    dt = dt.clamp(0.0, 0.1);
+    // Calm states run at a low frame rate: let their time flow normally.
+    final calm = state == NoxState.perched || state == NoxState.docked;
+    dt = dt.clamp(0.0, calm ? 0.25 : 0.1);
     _t += dt;
     _stateTime += dt;
 
@@ -362,6 +390,7 @@ class NoxBrain {
     _updatePetting(dt, cursor);
     _updateLook(dt, cursor);
     _updatePose(dt);
+    _cursorStill = cursor == _lastCursor ? _cursorStill + dt : 0;
     _lastCursor = cursor;
   }
 
