@@ -38,6 +38,13 @@ class NoxPose extends ChangeNotifier {
   /// 0 = island with just the eyes, 1 = island opened (Nox listens).
   double expand = 0;
 
+  /// 0 = island shown, 1 = pulled back to a thin line (cursor nearby).
+  double retract = 0;
+
+  /// Whether the nest is on the bottom edge (above the taskbar) instead of
+  /// the top of the screen.
+  bool nestBottom = false;
+
   /// Asks the painter to redraw.
   void changed() => notifyListeners();
 }
@@ -67,3 +74,22 @@ Size islandSize(double island, double expand) {
 
 /// Gap between the top of the screen and the island (logical px).
 const kIslandTop = 6.0;
+
+/// The island inside Nox's window (logical px). Anchored to the top or the
+/// bottom of the window depending on the screen edge it sits on; [retract]
+/// pulls it back to a thin line against that edge.
+Rect islandBox({
+  required Size window,
+  required double centerX,
+  required double island,
+  required double expand,
+  required double retract,
+  required bool bottom,
+}) {
+  final size = islandSize(island, expand);
+  final w = size.width + (60 - size.width) * retract * (size.width > 0 ? 1 : 0);
+  final h = size.height + (4 - size.height) * retract * (size.height > 0 ? 1 : 0);
+  final gap = kIslandTop * (1 - retract);
+  final top = bottom ? window.height - gap - h : gap;
+  return Rect.fromLTWH(centerX - w / 2, top, w, h);
+}

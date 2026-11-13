@@ -19,6 +19,10 @@ l'horloge (clic gauche ou droit) :
   droit sur l'île pour l'en sortir) : Nox s'installe en haut au centre de
   l'écran, dans une petite île noire où l'on ne voit que ses yeux. Un clic
   sur l'île l'appelle (elle s'agrandit, il écoute) ; un second clic le renvoie.
+  L'île se **déplace en la faisant glisser** le long du haut de l'écran ou
+  du bas (au-dessus de la barre des tâches) ; Nox retient sa place. Quand la
+  souris approche, elle **se rétracte en un fin trait** et laisse passer les
+  clics ; survoler le trait une demi-seconde la fait revenir.
 - **Rappeler Nox** : le fait revenir près de la souris (quitte le mode travail)
 - **Lancer au démarrage de Windows**
 - **Quitter**

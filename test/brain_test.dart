@@ -369,4 +369,62 @@ void main() {
     expect(b.state, NoxState.perched);
     expect(b.pose.island, 0);
   });
+
+  test('nest: dragging the island moves it, even to the bottom edge', () {
+    b.workMode = true;
+    b.spawn(d, const Offset(800, 500));
+    run(b, d, 6);
+    expect(b.state, NoxState.docked);
+    d.cursorPos = b.islandRect().center;
+    b.press(d.cursorPos);
+    d.button = true;
+    for (var i = 0; i < 30; i++) {
+      d.cursorPos += const Offset(25, 33);
+      b.update(1 / 60, d);
+    }
+    d.button = false;
+    b.update(1 / 60, d);
+    expect(b.takeNestMoved(), isTrue);
+    expect(b.takeCall(), isFalse);
+    expect(b.nestBottom, isTrue);
+    expect(b.nestX, closeTo(d.cursorPos.dx / 1920, 0.01));
+    expect(b.islandRect().bottom, closeTo(FakeDesktop.work.bottom - 6, 1));
+    expect(b.state, NoxState.docked);
+  });
+
+  test('nest: a click without moving calls Nox', () {
+    b.workMode = true;
+    b.spawn(d, const Offset(800, 500));
+    run(b, d, 6);
+    d.cursorPos = b.islandRect().center;
+    b.press(d.cursorPos);
+    d.button = true;
+    b.update(1 / 60, d);
+    d.button = false;
+    b.update(1 / 60, d);
+    expect(b.takeCall(), isTrue);
+    expect(b.listening, isTrue);
+  });
+
+  test('nest: pulls back when the cursor comes near, comes out on hover', () {
+    b.workMode = true;
+    b.spawn(d, const Offset(800, 500));
+    run(b, d, 6);
+    final full = b.islandRect();
+    d.cursorPos = full.bottomCenter + const Offset(40, 15);
+    run(b, d, 0.5);
+    expect(b.pose.retract, 1);
+    expect(b.hitTest(full.center), isFalse);
+    // Hovering the thin line brings the island back.
+    d.cursorPos = b.islandRect().center;
+    run(b, d, 0.9);
+    expect(b.pose.retract, 0);
+    expect(b.hitTest(b.islandRect().center), isTrue);
+    // Moving away and back pulls it back again.
+    d.cursorPos = const Offset(1500, 900);
+    run(b, d, 0.3);
+    d.cursorPos = full.bottomCenter + const Offset(40, 15);
+    run(b, d, 0.5);
+    expect(b.pose.retract, 1);
+  });
 }

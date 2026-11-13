@@ -102,6 +102,9 @@ l'écran et devient une pilule sombre façon « dynamic island » avec seulement
 ses yeux (suivent la souris, clignent, dorment). Clic = il est « appelé »
 (l'île s'agrandit, `brain.listening`) : c'est là que se branchera le panneau
 assistant. Réglage persistant (`work` dans shared_preferences).
+Transition « plongeon » (fente → Nox s'y engouffre → île + yeux). L'île se
+glisse le long du haut ou du bas de l'écran (`nest_x`, `nest_bottom`) et se
+rétracte en trait quand la souris approche (survol 0,5 s pour la rappeler).
 
 ### Jamais testé sur un vrai Windows — à vérifier en premier
 

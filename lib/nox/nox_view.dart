@@ -19,6 +19,7 @@ class NoxView extends StatefulWidget {
     required this.onMouseOver,
     required this.onDoubleClick,
     required this.onToggleNest,
+    required this.onNestMoved,
   });
 
   final NoxBrain brain;
@@ -33,6 +34,9 @@ class NoxView extends StatefulWidget {
 
   /// Right click on Nox: sends him to his nest, or brings him out.
   final VoidCallback onToggleNest;
+
+  /// The nest was dragged to a new place.
+  final VoidCallback onNestMoved;
 
   @override
   State<NoxView> createState() => _NoxViewState();
@@ -78,6 +82,9 @@ class _NoxViewState extends State<NoxView> with SingleTickerProviderStateMixin {
       widget.onMouseOver(over);
     }
 
+    if (brain.takeCall()) widget.onDoubleClick();
+    if (brain.takeNestMoved()) widget.onNestMoved();
+
     brain.pose.changed();
   }
 
@@ -101,7 +108,6 @@ class _NoxViewState extends State<NoxView> with SingleTickerProviderStateMixin {
         if (brain.state == NoxState.docked) {
           // In the island a single click calls Nox: it opens the assistant.
           brain.press(widget.desktop.cursor());
-          if (brain.listening) widget.onDoubleClick();
           return;
         }
         final now = DateTime.now();

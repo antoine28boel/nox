@@ -9,7 +9,12 @@ import 'pose.dart';
 /// Drawing happens in the sketch's own coordinates (the owl's feet are at
 /// (200, 408)), then scaled down by [owlScale] around [feet].
 class OwlPainter extends CustomPainter {
-  OwlPainter({required this.pose, required this.feet, this.owlScale = 0.4})
+  OwlPainter({
+    required this.pose,
+    required this.feet,
+    this.owlScale = 0.4,
+    this.windowSize = const Size(200, 180),
+  })
       : super(repaint: pose);
 
   final NoxPose pose;
@@ -17,6 +22,9 @@ class OwlPainter extends CustomPainter {
   /// Position of the feet inside the widget, in logical pixels.
   final Offset feet;
   final double owlScale;
+
+  /// Size of Nox's window (logical px): the island is anchored to its edges.
+  final Size windowSize;
 
   static const _plumage = Color(0xFF8B6B4F);
   static const _wing = Color(0xFF6E533D);
@@ -45,7 +53,7 @@ class OwlPainter extends CustomPainter {
       return;
     }
     final body = feet + const Offset(0, -51) * (owlScale / 0.4);
-    final slot = Offset(feet.dx, kIslandTop + 5);
+    final slot = _islandRect(kSlotOpen, 0, 0).center;
     final at = Offset.lerp(body, slot, k)!;
     final s = 1 - 0.92 * k;
     canvas.save();
@@ -80,18 +88,26 @@ class OwlPainter extends CustomPainter {
 
   /// The "dynamic island": a dark pill at the top of the screen where only
   /// Nox's eyes show. Opened (expand = 1) when he is called.
+  Rect _islandRect(double island, double expand, double retract) => islandBox(
+        window: windowSize,
+        centerX: feet.dx,
+        island: island,
+        expand: expand,
+        retract: retract,
+        bottom: pose.nestBottom,
+      );
+
   void _islandPill(Canvas canvas) {
     final a = pose.island;
     final e = pose.expand;
-    final size = islandSize(a, e);
-    final rect = Rect.fromLTWH(
-        feet.dx - size.width / 2, kIslandTop, size.width, size.height);
-    final rrect = RRect.fromRectAndRadius(rect, Radius.circular(size.height / 2));
+    final rect = _islandRect(a, e, pose.retract);
+    final rrect = RRect.fromRectAndRadius(rect, Radius.circular(rect.height / 2));
 
     canvas.drawRRect(rrect, _fill(_night));
-    // His eyes light up in the dark once the slot has widened.
-    final w = widenProgress(a);
-    if (w <= 0) return;
+    // His eyes light up in the dark once the slot has widened, and go out
+    // when the island pulls back to a line.
+    final w = widenProgress(a) * (1 - pose.retract);
+    if (w <= 0.05) return;
     final eyesAlpha = w;
 
     final r = (6 + 6 * e) * (0.4 + 0.6 * w);

@@ -56,7 +56,9 @@ Future<void> main() async {
 
   final brain = NoxBrain(mode: mode, pranks: pranks)
     ..scale = desktop.scale()
-    ..workMode = prefs.getBool('work') ?? false;
+    ..workMode = prefs.getBool('work') ?? false
+    ..nestX = prefs.getDouble('nest_x') ?? 0.5
+    ..nestBottom = prefs.getBool('nest_bottom') ?? false;
   final feather = renderFeather(desktop.scale());
   desktop.setFeatherImage(feather.bgra, feather.width, feather.height);
   brain.spawn(desktop, desktop.cursor());
@@ -387,6 +389,10 @@ class _NoxAppState extends State<NoxApp> with TrayListener {
                 onMouseOver: (over) => widget.desktop.setClickThrough(!over),
                 onDoubleClick: _openPanel,
                 onToggleNest: _toggleNest,
+                onNestMoved: () {
+                  widget.prefs.setDouble('nest_x', widget.brain.nestX);
+                  widget.prefs.setBool('nest_bottom', widget.brain.nestBottom);
+                },
               ),
       ),
     );

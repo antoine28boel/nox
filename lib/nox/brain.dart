@@ -143,6 +143,17 @@ class NoxBrain {
   double _island = 0;
   double _expand = 0;
   double _expandedUntil = 0;
+  double _retract = 0;
+  bool _summoned = false;
+  double _lineHover = 0;
+  Offset? _nestPress;
+  bool _nestDragging = false;
+  bool _nestMoved = false;
+  bool _callRequested = false;
+
+  /// Where the nest sits: fraction of the screen width, and which edge.
+  double nestX = 0.5;
+  bool nestBottom = false;
 
   final NoxPose pose = NoxPose();
 
@@ -161,7 +172,11 @@ class NoxBrain {
   bool hitTest(Offset point) {
     // While he hunts the cursor, clicks must still reach what is under him.
     if (hidden || hunting) return false;
-    if (state == NoxState.docked) return islandRect().inflate(4 * _px).contains(point);
+    if (state == NoxState.docked) {
+      if (_nestPress != null) return true;
+      if (_retract > 0.5) return false;
+      return islandRect().inflate(4 * _px).contains(point);
+    }
     final c = pos + NoxGeometry.bodyCenter * _px;
     final dx = (point.dx - c.dx) / (NoxGeometry.bodyRadiusX * _px);
     final dy = (point.dy - c.dy) / (NoxGeometry.bodyRadiusY * _px);
@@ -169,22 +184,99 @@ class NoxBrain {
   }
 
   /// Island bounds on screen (physical px).
-  Rect islandRect() {
-    final size = islandSize(_island, _expand);
-    final topLeft = pos - NoxGeometry.windowFeet * _px;
-    return Rect.fromLTWH(
-      topLeft.dx + (NoxGeometry.windowFeet.dx - size.width / 2) * _px,
-      topLeft.dy + kIslandTop * _px,
-      size.width * _px,
-      size.height * _px,
+  Rect islandRect({double? retract}) {
+    final box = islandBox(
+      window: NoxGeometry.windowSize,
+      centerX: NoxGeometry.windowFeet.dx,
+      island: _island,
+      expand: _expand,
+      retract: retract ?? _retract,
+      bottom: nestBottom,
     );
+    final topLeft = pos - NoxGeometry.windowFeet * _px;
+    return Rect.fromLTWH(topLeft.dx + box.left * _px, topLeft.dy + box.top * _px,
+        box.width * _px, box.height * _px);
   }
 
-  /// Where Nox's feet are when he sits in the island: window glued to the
-  /// top of the screen, centered.
-  Offset dockPoint(Desktop d) {
-    final m = d.monitorBounds(pos);
-    return Offset(m.center.dx, m.top + NoxGeometry.windowFeet.dy * _px);
+  /// Where Nox's feet are when he sits in his nest: window glued to the top
+  /// of the screen, or to the top of the taskbar, at [nestX].
+  Offset dockPoint(Desktop d, {Offset? at}) {
+    final m = d.monitorBounds(at ?? pos);
+    final half = NoxGeometry.windowSize.width / 2 * _px;
+    final x = (m.left + nestX * m.width)
+        .clamp(m.left + half, math.max(m.left + half, m.right - half))
+        .toDouble();
+    if (nestBottom) {
+      final work = d.workArea(at ?? pos);
+      final below = NoxGeometry.windowSize.height - NoxGeometry.windowFeet.dy;
+      return Offset(x, work.bottom - below * _px);
+    }
+    return Offset(x, m.top + NoxGeometry.windowFeet.dy * _px);
+  }
+
+  /// True once after a click on the island called Nox (opens the assistant).
+  bool takeCall() {
+    final c = _callRequested;
+    _callRequested = false;
+    return c;
+  }
+
+  /// True once after the island was dragged to a new place (to save it).
+  bool takeNestMoved() {
+    final m = _nestMoved;
+    _nestMoved = false;
+    return m;
+  }
+
+  /// In the nest: click (call Nox) or drag (move the nest), pull the island
+  /// back when the cursor comes near, bring it out on a short hover.
+  void _updateNest(double dt, Desktop d, Offset cursor) {
+    final press = _nestPress;
+    if (press != null) {
+      if (d.leftButtonDown()) {
+        if (!_nestDragging && (cursor - press).distance > 6 * _px) _nestDragging = true;
+        if (_nestDragging) {
+          final m = d.monitorBounds(cursor);
+          nestX = ((cursor.dx - m.left) / m.width).clamp(0.0, 1.0);
+          nestBottom = cursor.dy > m.center.dy;
+          pos = dockPoint(d, at: cursor);
+          return;
+        }
+      } else {
+        _nestPress = null;
+        if (_nestDragging) {
+          _nestDragging = false;
+          _nestMoved = true;
+        } else {
+          _expandedUntil = _expandedUntil > _t ? 0 : _t + 6;
+          if (_t < _expandedUntil) _callRequested = true;
+        }
+      }
+    }
+    pos = dockPoint(d);
+
+    final near = workMode &&
+        _island >= 1 &&
+        islandRect(retract: 0).inflate(30 * _px).contains(cursor);
+    if (!near) {
+      _summoned = false;
+      _lineHover = 0;
+    } else if (_retract > 0.9) {
+      if (islandRect().inflate(8 * _px).contains(cursor)) {
+        _lineHover += dt;
+        if (_lineHover > 0.5) _summoned = true;
+      } else {
+        _lineHover = 0;
+      }
+    }
+    final pull = near && !_summoned && !listening && _nestPress == null;
+    _retract = (_retract + (pull ? dt : -dt) * 6).clamp(0.0, 1.0);
+
+    if (!workMode && _island <= 0) {
+      vel = Offset(0, 300 * _px);
+      _recoverAt = 0.3;
+      _setState(NoxState.falling);
+    }
   }
 
   /// Turns work mode on or off (tray menu).
@@ -203,8 +295,10 @@ class NoxBrain {
   /// Mouse pressed on Nox: in the island it calls him, elsewhere it grabs him.
   void press(Offset cursor) {
     if (state == NoxState.docked) {
+      // Decided on release: a click calls Nox, a drag moves the nest.
       sleeping = false;
-      _expandedUntil = _expandedUntil > _t ? 0 : _t + 6;
+      _nestPress = cursor;
+      _nestDragging = false;
       return;
     }
     startDrag(cursor);
@@ -257,12 +351,7 @@ class NoxBrain {
       case NoxState.dragged:
         _updateDragged(dt, d, cursor);
       case NoxState.docked:
-        pos = dockPoint(d);
-        if (!workMode && _island <= 0) {
-          vel = Offset(0, 300 * _px);
-          _recoverAt = 0.3;
-          _setState(NoxState.falling);
-        }
+        _updateNest(dt, d, cursor);
     }
 
     _updateFeather(dt, d);
@@ -753,6 +842,8 @@ class NoxBrain {
       ..sleeping = sleeping
       ..island = _island
       ..expand = _expand
+      ..retract = _retract
+      ..nestBottom = nestBottom
       ..happy = _t < _happyUntil
       ..carrying = carrying
       ..surprised = falling || dragged
