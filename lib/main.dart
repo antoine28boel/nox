@@ -100,6 +100,7 @@ class _NoxAppState extends State<NoxApp> with TrayListener {
 
   // "Aujourd'hui" panel.
   bool _panelOpen = false;
+  Timer? _outsideClick;
   TodayData? _today;
   bool _todayLoading = false;
   String? _todayError;
@@ -240,11 +241,28 @@ class _NoxAppState extends State<NoxApp> with TrayListener {
     if (_panelOpen) return;
     widget.desktop.enterPanel(widget.brain.pos, kPanelSize);
     setState(() => _panelOpen = true);
+    _watchOutsideClick();
     unawaited(_markBriefRead());
     unawaited(_refreshToday());
   }
 
+  /// A click anywhere outside the panel closes it.
+  void _watchOutsideClick() {
+    _outsideClick?.cancel();
+    // A button still held from the click that opened the panel is ignored.
+    var wasDown = true;
+    _outsideClick = Timer.periodic(const Duration(milliseconds: 50), (_) {
+      final down = widget.desktop.leftButtonDown();
+      if (down && !wasDown && !widget.desktop.ownRect().contains(widget.desktop.cursor())) {
+        _closePanel();
+      }
+      wasDown = down;
+    });
+  }
+
   void _closePanel() {
+    _outsideClick?.cancel();
+    _outsideClick = null;
     if (!_panelOpen) return;
     widget.desktop.leavePanel(kNoxWindowSize);
     setState(() => _panelOpen = false);
@@ -455,6 +473,7 @@ class _NoxAppState extends State<NoxApp> with TrayListener {
     _firstToday?.cancel();
     _briefTimer?.cancel();
     _cleanUpdate?.cancel();
+    _outsideClick?.cancel();
     trayManager.removeListener(this);
     super.dispose();
   }

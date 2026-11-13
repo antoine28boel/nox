@@ -32,48 +32,36 @@ String _greeting(DateTime now) {
 
 const _wet = {'rainy', 'pouring', 'lightning-rainy', 'hail', 'snowy-rainy'};
 
-String _plural(int n, String one, String many) => n == 1 ? one : many;
-
-/// The brief Nox writes by himself, without any AI: works offline.
+/// The brief Nox writes by himself, without any AI: works offline. A short
+/// word on what matters; the details are in the panel's sections.
 String offlineBrief(TodayData data, DateTime now) {
-  final lines = <String>['${_greeting(now)} ! Nous sommes ${frenchDate(now)}.'];
+  final words = <String>['${_greeting(now)} !'];
+
+  final timed = [for (final e in data.events) if (!e.allDay && e.end.isAfter(now)) e];
+  if (timed.isNotEmpty) {
+    final next = timed.first;
+    words.add(next.start.isAfter(now)
+        ? 'Prochain rendez-vous à ${hhmm(next.start)} : ${next.title}.'
+        : '« ${next.title} » est en cours.');
+  } else if (data.events.isEmpty) {
+    words.add('Rien à l\'agenda.');
+  } else {
+    words.add('Pas de rendez-vous à heure fixe.');
+  }
 
   final weather = data.weather;
   if (weather != null) {
-    final umbrella = _wet.contains(weather.condition) ? ' Pense au parapluie.' : '';
-    lines.add('Météo : ${weatherLabel(weather)}.$umbrella');
+    final t = weather.temperature;
+    if (_wet.contains(weather.condition)) {
+      words.add('Pense au parapluie.');
+    } else if (t != null && t <= 2) {
+      words.add('Il fait froid, couvre-toi.');
+    }
   }
 
-  final allDay = [for (final e in data.events) if (e.allDay) e];
-  final timed = [for (final e in data.events) if (!e.allDay && e.end.isAfter(now)) e];
-  if (data.events.isEmpty) {
-    lines.add('Agenda : rien de prévu aujourd\'hui.');
-  } else {
-    final parts = <String>[];
-    if (allDay.isNotEmpty) {
-      parts.add('toute la journée, ${allDay.map((e) => e.title).join(', ')}');
-    }
-    if (timed.isNotEmpty) {
-      final next = timed.first;
-      final count = timed.length;
-      final when = next.start.isAfter(now) ? 'à ${hhmm(next.start)}' : 'en cours';
-      parts.add('$count rendez-vous, '
-          '${_plural(count, 'à savoir', 'le prochain')} « ${next.title} » $when');
-    } else if (allDay.isEmpty) {
-      parts.add('plus rien de prévu');
-    }
-    lines.add('Agenda : ${parts.join(' ; ')}.');
-  }
-
-  final tasks = data.tasks;
-  if (tasks.isEmpty) {
-    lines.add('Tâches : aucune en attente.');
-  } else {
-    final more = tasks.length - 1;
-    lines.add('Tâches : « ${tasks.first} »'
-        '${more > 0 ? ' et $more ${_plural(more, 'autre', 'autres')}' : ''}.');
-  }
-  return lines.join('\n');
+  final n = data.tasks.length;
+  if (n > 0) words.add(n == 1 ? 'Une tâche t\'attend.' : '$n tâches t\'attendent.');
+  return words.join(' ');
 }
 
 /// What Home Assistant's AI is asked to write, with the day's data.
@@ -89,11 +77,12 @@ String briefInstructions(TodayData data, DateTime now) {
     for (final t in data.tasks) 'Tâche à faire : $t.',
   ];
   return 'Tu es Nox, un petit hibou assistant, bienveillant et un peu malicieux. '
-      'Rédige en français, en tutoyant, le brief de début de journée de ton '
-      'humain : 3 à 5 phrases courtes, sans liste ni titre ni emoji, '
-      'en commençant par une salutation adaptée à l\'heure. Signale ce qui '
-      'demande de l\'attention (premier rendez-vous, météo qui impose de '
-      's\'équiper, tâches). N\'invente rien au-delà de ces données :\n'
+      'Rédige en français, en tutoyant, le mot de début de journée de ton '
+      'humain : 1 à 3 phrases courtes, sans liste ni titre ni emoji, '
+      'en commençant par une salutation adaptée à l\'heure. L\'agenda, la '
+      'météo et les tâches sont déjà affichés en détail juste en dessous : '
+      'ne les énumère pas, ne redonne pas la date, dis seulement ce qui mérite '
+      'l\'attention ou un conseil. N\'invente rien au-delà de ces données :\n'
       '${facts.join('\n')}';
 }
 

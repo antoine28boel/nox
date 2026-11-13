@@ -45,22 +45,29 @@ void main() {
       );
       expect(
         offlineBrief(data, morning),
-        'Bonjour ! Nous sommes vendredi 13 novembre.\n'
-        'Météo : Pluie · 12 °C. Pense au parapluie.\n'
-        'Agenda : toute la journée, Anniversaire de Léa ; '
-        '2 rendez-vous, le prochain « Dentiste » à 10:00.\n'
-        'Tâches : « Appeler la banque » et 2 autres.',
+        'Bonjour ! Prochain rendez-vous à 10:00 : Dentiste. '
+        'Pense au parapluie. 3 tâches t\'attendent.',
       );
     });
 
-    test('an empty day', () {
-      final data = TodayData(fetchedAt: morning);
-      expect(
-        offlineBrief(data, DateTime(2026, 11, 13, 19)),
-        'Bonsoir ! Nous sommes vendredi 13 novembre.\n'
-        'Agenda : rien de prévu aujourd\'hui.\n'
-        'Tâches : aucune en attente.',
-      );
+    test('an empty, cold day', () {
+      final data = TodayData(
+          fetchedAt: morning,
+          weather: const WeatherNow(condition: 'clear-night', temperature: 1));
+      expect(offlineBrief(data, DateTime(2026, 11, 13, 19)),
+          'Bonsoir ! Rien à l\'agenda. Il fait froid, couvre-toi.');
+    });
+
+    test('only all-day events', () {
+      final data = TodayData(fetchedAt: morning, events: [
+        AgendaEvent(
+            title: 'PMC',
+            start: DateTime(2026, 11, 13),
+            end: DateTime(2026, 11, 14),
+            allDay: true),
+      ], tasks: const ['maïs']);
+      expect(offlineBrief(data, DateTime(2026, 11, 13, 20)),
+          'Bonsoir ! Pas de rendez-vous à heure fixe. Une tâche t\'attend.');
     });
   });
 

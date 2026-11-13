@@ -344,19 +344,25 @@ void main() {
     expect(b.state, NoxState.docked);
   });
 
-  test('work mode: a click calls Nox, a second one sends him back', () {
+  test('work mode: the island opens only while hovered', () {
     b.workMode = true;
     b.spawn(d, const Offset(800, 500));
     run(b, d, 6);
     expect(b.state, NoxState.docked);
     final small = b.islandRect();
-    b.press(small.center);
+    run(b, d, 10);
+    expect(b.listening, isFalse);
+    // Approach (the island pulls back), then hover it to bring it out open.
+    d.cursorPos = small.bottomCenter + const Offset(40, 15);
     run(b, d, 0.5);
+    d.cursorPos = b.islandRect().center;
+    run(b, d, 1.5);
     expect(b.listening, isTrue);
     expect(b.islandRect().width, greaterThan(small.width));
-    b.press(b.islandRect().center);
+    d.cursorPos = const Offset(1500, 900);
     run(b, d, 0.5);
     expect(b.listening, isFalse);
+    expect(b.islandRect().width, closeTo(small.width, 0.5));
     expect(b.state, NoxState.docked);
   });
 

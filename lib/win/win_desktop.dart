@@ -93,6 +93,12 @@ class WinDesktop implements Desktop {
     SetForegroundWindow(ownWindow);
   }
 
+  /// Nox's own window on screen (physical px).
+  Rect ownRect() {
+    if (GetWindowRect(ownWindow, _rect) == 0) return Rect.zero;
+    return _toRect(_rect.ref);
+  }
+
   /// Back to the small window that never takes the focus.
   void leavePanel(Size logical) {
     final s = scale();

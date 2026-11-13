@@ -142,7 +142,7 @@ class NoxBrain {
   double _headTurn = 0;
   double _island = 0;
   double _expand = 0;
-  double _expandedUntil = 0;
+  bool _hover = false;
   double _retract = 0;
   bool _summoned = false;
   double _lineHover = 0;
@@ -248,8 +248,7 @@ class NoxBrain {
           _nestDragging = false;
           _nestMoved = true;
         } else {
-          _expandedUntil = _expandedUntil > _t ? 0 : _t + 6;
-          if (_t < _expandedUntil) _callRequested = true;
+          _callRequested = true;
         }
       }
     }
@@ -271,6 +270,11 @@ class NoxBrain {
     }
     final pull = near && !_summoned && !listening && _nestPress == null;
     _retract = (_retract + (pull ? dt : -dt) * 6).clamp(0.0, 1.0);
+    // Opened (eyes and beak) only while the cursor is on the island.
+    _hover = workMode &&
+        _island >= 1 &&
+        _retract < 0.1 &&
+        islandRect().inflate(4 * _px).contains(cursor);
 
     if (!workMode && _island <= 0) {
       vel = Offset(0, 300 * _px);
@@ -284,7 +288,7 @@ class NoxBrain {
     workMode = on;
     sleeping = false;
     hunting = false;
-    _expandedUntil = 0;
+    _hover = false;
     if (on && state == NoxState.perched) {
       _takeOff(d);
     }
@@ -304,8 +308,8 @@ class NoxBrain {
     startDrag(cursor);
   }
 
-  /// Whether Nox is opened in the island, listening.
-  bool get listening => state == NoxState.docked && _t < _expandedUntil;
+  /// Whether Nox is opened in the island (the cursor is on it).
+  bool get listening => state == NoxState.docked && _hover;
 
   /// Called when the user presses the mouse on Nox.
   void startDrag(Offset cursor) {
