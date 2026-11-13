@@ -9,6 +9,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:tray_manager/tray_manager.dart';
 import 'package:window_manager/window_manager.dart';
 
+import 'assistant/brief.dart';
 import 'assistant/ha_client.dart';
 import 'assistant/today.dart';
 import 'assistant/today_panel.dart';
@@ -93,6 +94,12 @@ class _NoxAppState extends State<NoxApp> with TrayListener {
   String? _todayError;
   Timer? _todayTimer;
 
+  // Morning brief.
+  Brief? _brief;
+  bool _briefing = false;
+  DateTime? _lastBriefTry;
+  Timer? _briefTimer;
+
   String get _haUrl => widget.prefs.getString('ha_url') ?? '';
   String get _haToken => widget.prefs.getString('ha_token') ?? '';
   bool get _haConfigured => _haUrl.isNotEmpty && _haToken.isNotEmpty;
@@ -128,6 +135,68 @@ class _NoxAppState extends State<NoxApp> with TrayListener {
     });
   }
 
+  void _loadBrief() {
+    final saved = widget.prefs.getString('brief');
+    if (saved == null) return;
+    try {
+      _brief = Brief.fromJson(jsonDecode(saved));
+    } on FormatException {
+      _brief = null;
+    }
+  }
+
+  /// Today's brief, if there is one.
+  Brief? get _todayBrief {
+    final brief = _brief;
+    return brief != null && brief.day == dayKey(DateTime.now()) ? brief : null;
+  }
+
+  /// Nox holds an envelope while he has news: an update or an unread brief.
+  void _updateCarrying() {
+    final brief = _todayBrief;
+    widget.brain.carrying = _update != null || (brief != null && !brief.read);
+  }
+
+  /// At the first sign of life of the day, Nox fetches the day and brings
+  /// the brief. Checked every minute.
+  Future<void> _checkBrief() async {
+    // Yesterday's unread brief is no longer news.
+    _updateCarrying();
+    final now = DateTime.now();
+    if (!_haConfigured || _briefing) return;
+    if (!briefDue(now, _brief?.day)) return;
+    // Someone must be there to receive it.
+    if (widget.brain.sleeping || widget.desktop.idleMillis() > 60000) return;
+    final last = _lastBriefTry;
+    if (last != null && now.difference(last) < const Duration(minutes: 15)) return;
+    _lastBriefTry = now;
+    _briefing = true;
+    try {
+      await _refreshToday();
+      final data = _today;
+      // Without today's data (Home Assistant unreachable), try again later.
+      if (data == null || !isFromToday(data, now)) return;
+      final ai = await HaClient(_haUrl, _haToken).aiBrief(data, now);
+      final brief = Brief(day: dayKey(now), text: ai ?? offlineBrief(data, now), byAi: ai != null);
+      _brief = brief;
+      await widget.prefs.setString('brief', jsonEncode(brief.toJson()));
+      if (!mounted) return;
+      _updateCarrying();
+      await _refreshMenu();
+    } finally {
+      _briefing = false;
+    }
+  }
+
+  Future<void> _markBriefRead() async {
+    final brief = _todayBrief;
+    if (brief == null || brief.read) return;
+    _brief = brief.markRead();
+    await widget.prefs.setString('brief', jsonEncode(_brief!.toJson()));
+    _updateCarrying();
+    await _refreshMenu();
+  }
+
   String get _todayStatus {
     if (!_haConfigured) return '';
     if (_todayLoading) return 'Actualisation…';
@@ -160,6 +229,7 @@ class _NoxAppState extends State<NoxApp> with TrayListener {
     if (_panelOpen) return;
     widget.desktop.enterPanel(widget.brain.pos, kPanelSize);
     setState(() => _panelOpen = true);
+    unawaited(_markBriefRead());
     unawaited(_refreshToday());
   }
 
@@ -180,6 +250,9 @@ class _NoxAppState extends State<NoxApp> with TrayListener {
     // Keeps the offline cache fresh even when the panel stays closed.
     _todayTimer = Timer.periodic(const Duration(minutes: 30), (_) => _refreshToday());
     _firstToday = Timer(const Duration(seconds: 5), _refreshToday);
+    _loadBrief();
+    _updateCarrying();
+    _briefTimer = Timer.periodic(const Duration(minutes: 1), (_) => _checkBrief());
   }
 
   Timer? _firstToday;
@@ -193,7 +266,7 @@ class _NoxAppState extends State<NoxApp> with TrayListener {
     final declined = widget.prefs.getInt('update_declined') ?? 0;
     if (update == null || (!manual && update.build <= declined)) return;
     _update = update;
-    widget.brain.carrying = true;
+    _updateCarrying();
     await _refreshMenu();
   }
 
@@ -202,7 +275,7 @@ class _NoxAppState extends State<NoxApp> with TrayListener {
     if (update == null || _installing) return;
     if (!accept) {
       _update = null;
-      widget.brain.carrying = false;
+      _updateCarrying();
       await widget.prefs.setInt('update_declined', update.build);
       await _refreshMenu();
       return;
@@ -272,7 +345,9 @@ class _NoxAppState extends State<NoxApp> with TrayListener {
       MenuItem.separator(),
       MenuItem.checkbox(
           key: 'work', label: 'Nichoir (mode travail)', checked: widget.brain.workMode),
-      MenuItem(key: 'today', label: "Aujourd'hui"),
+      MenuItem(
+          key: 'today',
+          label: _todayBrief?.read == false ? "Aujourd'hui (brief à lire)" : "Aujourd'hui"),
       MenuItem(key: 'recall', label: 'Rappeler Nox'),
       MenuItem.checkbox(
           key: 'startup', label: 'Lancer au démarrage de Windows', checked: _startup),
@@ -356,6 +431,7 @@ class _NoxAppState extends State<NoxApp> with TrayListener {
     _dailyCheck?.cancel();
     _todayTimer?.cancel();
     _firstToday?.cancel();
+    _briefTimer?.cancel();
     trayManager.removeListener(this);
     super.dispose();
   }
@@ -376,6 +452,7 @@ class _NoxAppState extends State<NoxApp> with TrayListener {
             ? TodayPanel(
                 now: DateTime.now(),
                 data: _today,
+                brief: _todayBrief,
                 status: _todayStatus,
                 configured: _haConfigured,
                 haUrl: _haUrl,

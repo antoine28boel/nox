@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'brief.dart';
 import 'today.dart';
 
 /// A problem Nox can explain to the user (wrong token, unexpected answer…).
@@ -25,7 +26,8 @@ class HaClient {
     return base.replace(path: '${base.path}$path', queryParameters: query);
   }
 
-  Future<Object?> _request(String method, Uri uri, {Object? body}) async {
+  Future<Object?> _request(String method, Uri uri,
+      {Object? body, Duration timeout = const Duration(seconds: 20)}) async {
     final client = HttpClient()
       ..connectionTimeout = const Duration(seconds: 10)
       ..userAgent = 'nox';
@@ -37,9 +39,8 @@ class HaClient {
         request.headers.contentType = ContentType.json;
         request.add(utf8.encode(jsonEncode(body)));
       }
-      final response = await request.close().timeout(const Duration(seconds: 20));
-      final text =
-          await response.transform(utf8.decoder).join().timeout(const Duration(seconds: 20));
+      final response = await request.close().timeout(timeout);
+      final text = await response.transform(utf8.decoder).join().timeout(timeout);
       if (response.statusCode == 401 || response.statusCode == 403) {
         throw const HaException('Jeton refusé par Home Assistant.');
       }
@@ -102,5 +103,22 @@ class HaClient {
     }
 
     return TodayData(fetchedAt: now, weather: found.weather, events: events, tasks: tasks);
+  }
+
+  /// Asks Home Assistant's AI (its default "AI task" entity) to write the
+  /// morning brief. Null when no AI is set up or it fails: Nox then writes
+  /// it himself.
+  Future<String?> aiBrief(TodayData data, DateTime now) async {
+    try {
+      final json = await _request(
+        'POST',
+        _uri('/api/services/ai_task/generate_data', const {'return_response': ''}),
+        body: {'task_name': 'Brief du matin de Nox', 'instructions': briefInstructions(data, now)},
+        timeout: const Duration(seconds: 60),
+      );
+      return parseAiTaskText(json);
+    } catch (_) {
+      return null;
+    }
   }
 }

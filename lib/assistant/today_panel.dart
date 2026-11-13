@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import 'brief.dart';
 import 'today.dart';
 
 /// Size of the panel window, in logical pixels.
@@ -18,6 +19,7 @@ class TodayPanel extends StatefulWidget {
     super.key,
     required this.now,
     required this.data,
+    this.brief,
     required this.status,
     required this.configured,
     required this.haUrl,
@@ -30,6 +32,9 @@ class TodayPanel extends StatefulWidget {
 
   /// Last data fetched (possibly from the offline cache), or null.
   final TodayData? data;
+
+  /// Today's brief, if Nox has brought one.
+  final Brief? brief;
 
   /// One line about freshness: "À jour à 09:12", "Hors ligne…".
   final String status;
@@ -138,6 +143,16 @@ class _TodayPanelState extends State<TodayPanel> {
           padding: const EdgeInsets.only(left: 4, bottom: 8),
           child: Text(widget.status, style: const TextStyle(color: _muted, fontSize: 12)),
         ),
+        if (widget.brief case final brief?)
+          _Section(title: 'Brief', children: [
+            Text(brief.text, style: const TextStyle(height: 1.4)),
+            if (brief.byAi)
+              const Padding(
+                padding: EdgeInsets.only(top: 6),
+                child: Text('Rédigé par l\'IA de Home Assistant',
+                    style: TextStyle(color: _muted, fontSize: 11)),
+              ),
+          ]),
         if (!widget.configured)
           const _Section(title: 'Connexion', children: [
             Text('Nox n\'est pas encore relié à Home Assistant. Ouvre « Réglages ».'),
