@@ -151,3 +151,10 @@ flutter run -d windows
 
 Commits : terminer les messages par les lignes d'attribution habituelles de
 Claude Code ; pousser sur `main` (le CI produit l'artefact).
+
+## 8. Compilation : uniquement sur demande
+
+L'utilisateur ne veut plus de build à chaque push. Le workflow ne se lance que
+sur un push de la branche `release` ou via « Run workflow » (Actions). Quand
+il demande une compilation : `git push origin main:release` (après avoir
+poussé `main`). Chaque build publie une release `build-N` proposée par Nox.

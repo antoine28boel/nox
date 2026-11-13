@@ -1,9 +1,10 @@
 name: Build Windows
 
+# Builds only on request: a push to the `release` branch (done by Claude
+# when asked), or "Run workflow" in the Actions tab. Pushes to main don't build.
 on:
   push:
-    branches: [main]
-  pull_request:
+    branches: [release]
   workflow_dispatch:
 
 permissions:
@@ -34,7 +35,7 @@ jobs:
 
       # Each build of main becomes a release; Nox offers it as an update.
       - name: Publish release
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        if: github.ref == 'refs/heads/release' || github.event_name == 'workflow_dispatch'
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
