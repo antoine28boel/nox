@@ -32,17 +32,32 @@ class OwlPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     if (pose.hidden) return;
-    if (pose.island < 1) _owl(canvas, size);
+    if (pose.island < kPlungeEnd) _plungingOwl(canvas, size);
     if (pose.island > 0) _islandPill(canvas);
+  }
+
+  /// Nox flying up into the slot, head first, sucked toward its center.
+  /// The black slot is drawn over him, so he vanishes into it.
+  void _plungingOwl(Canvas canvas, Size size) {
+    final k = plungeProgress(pose.island);
+    if (k == 0) {
+      _owl(canvas, size);
+      return;
+    }
+    final body = feet + const Offset(0, -51) * (owlScale / 0.4);
+    final slot = Offset(feet.dx, kIslandTop + 5);
+    final at = Offset.lerp(body, slot, k)!;
+    final s = 1 - 0.92 * k;
+    canvas.save();
+    canvas.translate(at.dx, at.dy);
+    canvas.scale(s * (1 - 0.25 * k), s);
+    canvas.translate(-body.dx, -body.dy);
+    _owl(canvas, size);
+    canvas.restore();
   }
 
   void _owl(Canvas canvas, Size size) {
     final breath = 1 + 0.015 * math.sin(pose.time * 2.2);
-    final fade = 1 - pose.island;
-    if (fade < 1) {
-      canvas.saveLayer(Offset.zero & size,
-          Paint()..color = Color.fromRGBO(0, 0, 0, fade));
-    }
 
     canvas.save();
     canvas.translate(feet.dx, feet.dy);
@@ -59,7 +74,6 @@ class OwlPainter extends CustomPainter {
     if (pose.sleeping) _zzz(canvas);
 
     canvas.restore();
-    if (fade < 1) canvas.restore();
   }
 
   static const _night = Color(0xFF000000);
@@ -74,12 +88,14 @@ class OwlPainter extends CustomPainter {
         feet.dx - size.width / 2, kIslandTop, size.width, size.height);
     final rrect = RRect.fromRectAndRadius(rect, Radius.circular(size.height / 2));
 
-    canvas.drawRRect(rrect, _fill(_night.withValues(alpha: a)));
-    if (a < 0.6) return;
-    final eyesAlpha = ((a - 0.6) / 0.4).clamp(0.0, 1.0);
+    canvas.drawRRect(rrect, _fill(_night));
+    // His eyes light up in the dark once the slot has widened.
+    final w = widenProgress(a);
+    if (w <= 0) return;
+    final eyesAlpha = w;
 
-    final r = 6 + 6 * e;
-    final cy = rect.top + (a * 15) + e * 6;
+    final r = (6 + 6 * e) * (0.4 + 0.6 * w);
+    final cy = rect.top + rect.height / 2 + e * (21 - rect.height / 2);
     final spread = 14 + 8 * e;
     for (final side in [-1.0, 1.0]) {
       final c = Offset(rect.center.dx + side * spread, cy);

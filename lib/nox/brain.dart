@@ -195,11 +195,9 @@ class NoxBrain {
     _expandedUntil = 0;
     if (on && state == NoxState.perched) {
       _takeOff(d);
-    } else if (!on && state == NoxState.docked) {
-      vel = Offset(0, 300 * _px);
-      _recoverAt = 0.3;
-      _setState(NoxState.falling);
     }
+    // Leaving the nest: Nox first drops out of the island (see docked
+    // update), then falls and flies away.
   }
 
   /// Mouse pressed on Nox: in the island it calls him, elsewhere it grabs him.
@@ -260,6 +258,11 @@ class NoxBrain {
         _updateDragged(dt, d, cursor);
       case NoxState.docked:
         pos = dockPoint(d);
+        if (!workMode && _island <= 0) {
+          vel = Offset(0, 300 * _px);
+          _recoverAt = 0.3;
+          _setState(NoxState.falling);
+        }
     }
 
     _updateFeather(dt, d);
@@ -737,10 +740,12 @@ class NoxBrain {
     final falling = state == NoxState.falling;
     final dragged = state == NoxState.dragged;
     final docked = state == NoxState.docked;
-    _island = (_island + (docked ? dt : -dt) * 4).clamp(0.0, 1.0);
+    // Into the nest in 0.9 s, out of it in 0.7 s.
+    _island = (_island + (docked && workMode ? dt / 0.9 : -dt / 0.7)).clamp(0.0, 1.0);
+    final leavingNest = docked && !workMode;
     _expand = (_expand + (listening ? dt : -dt) * 6).clamp(0.0, 1.0);
 
-    _flapPhase += dt * (flying ? 22 : (falling ? 30 : 0));
+    _flapPhase += dt * (flying || leavingNest ? 22 : (falling ? 30 : 0));
 
     pose
       ..hidden = hidden
@@ -756,8 +761,8 @@ class NoxBrain {
           ? Offset.zero
           : (_pecking ? const Offset(-0.8, 0.7) : _look)
       ..headTurn = sleeping ? 0 : _headTurn
-      ..wingSpread = flying ? 0.9 : (falling ? 1.0 : (dragged ? 0.35 : 0))
-      ..wingFlap = (flying || falling) ? math.sin(_flapPhase) * 0.55 : 0
+      ..wingSpread = flying || leavingNest ? 0.9 : (falling ? 1.0 : (dragged ? 0.35 : 0))
+      ..wingFlap = (flying || falling || leavingNest) ? math.sin(_flapPhase) * 0.55 : 0
       ..feetTucked = flying
       ..tilt = flying
           ? (vel.dx / (900 * _px)).clamp(-0.35, 0.35)

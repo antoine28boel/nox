@@ -42,9 +42,28 @@ class NoxPose extends ChangeNotifier {
   void changed() => notifyListeners();
 }
 
+/// Phases of the trip into the nest, on the `island` 0..1 scale:
+/// a slot opens (0 → [kSlotOpen]), Nox plunges into it ([kSlotOpen] →
+/// [kPlungeEnd]), then the slot widens into the island and his eyes light up.
+const kSlotOpen = 0.25;
+const kPlungeEnd = 0.7;
+
+double _ease(double t) => t * t * (3 - 2 * t);
+
+/// How far Nox has plunged into the slot (0 = not yet, 1 = gone inside).
+double plungeProgress(double island) =>
+    _ease(((island - kSlotOpen) / (kPlungeEnd - kSlotOpen)).clamp(0.0, 1.0));
+
+/// How far the slot has widened into the island after the plunge.
+double widenProgress(double island) =>
+    _ease(((island - kPlungeEnd) / (1 - kPlungeEnd)).clamp(0.0, 1.0));
+
 /// Size of the island pill (logical px) for a given [island]/[expand].
-Size islandSize(double island, double expand) =>
-    Size(36 + 80 * island + 60 * expand, 10 + 20 * island + 34 * expand);
+Size islandSize(double island, double expand) {
+  final open = _ease((island / kSlotOpen).clamp(0.0, 1.0));
+  final widen = widenProgress(island);
+  return Size(40 * open + 76 * widen + 60 * expand, 10 * open + 20 * widen + 34 * expand);
+}
 
 /// Gap between the top of the screen and the island (logical px).
 const kIslandTop = 6.0;
