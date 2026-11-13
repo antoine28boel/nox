@@ -62,7 +62,7 @@ class OwlPainter extends CustomPainter {
     if (fade < 1) canvas.restore();
   }
 
-  static const _night = Color(0xFF16110D);
+  static const _night = Color(0xFF000000);
 
   /// The "dynamic island": a dark pill at the top of the screen where only
   /// Nox's eyes show. Opened (expand = 1) when he is called.
@@ -75,12 +75,6 @@ class OwlPainter extends CustomPainter {
     final rrect = RRect.fromRectAndRadius(rect, Radius.circular(size.height / 2));
 
     canvas.drawRRect(rrect, _fill(_night.withValues(alpha: a)));
-    canvas.drawRRect(
-        rrect,
-        Paint()
-          ..style = PaintingStyle.stroke
-          ..strokeWidth = 1
-          ..color = _iris.withValues(alpha: 0.25 * a));
     if (a < 0.6) return;
     final eyesAlpha = ((a - 0.6) / 0.4).clamp(0.0, 1.0);
 

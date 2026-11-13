@@ -1,3 +1,4 @@
+import 'package:flutter/gestures.dart' show kSecondaryMouseButton;
 import 'package:flutter/scheduler.dart';
 import 'package:flutter/widgets.dart';
 
@@ -17,6 +18,7 @@ class NoxView extends StatefulWidget {
     required this.desktop,
     required this.onMouseOver,
     required this.onDoubleClick,
+    required this.onToggleNest,
   });
 
   final NoxBrain brain;
@@ -28,6 +30,9 @@ class NoxView extends StatefulWidget {
 
   /// Called when Nox is double-clicked (opens the "Aujourd'hui" panel).
   final VoidCallback onDoubleClick;
+
+  /// Right click on Nox: sends him to his nest, or brings him out.
+  final VoidCallback onToggleNest;
 
   @override
   State<NoxView> createState() => _NoxViewState();
@@ -86,8 +91,13 @@ class _NoxViewState extends State<NoxView> with SingleTickerProviderStateMixin {
   Widget build(BuildContext context) {
     return Listener(
       behavior: HitTestBehavior.opaque,
-      onPointerDown: (_) {
+      onPointerDown: (event) {
         final brain = widget.brain;
+        // Right click: into the nest (island) or out of it.
+        if (event.buttons & kSecondaryMouseButton != 0) {
+          widget.onToggleNest();
+          return;
+        }
         if (brain.state == NoxState.docked) {
           // In the island a single click calls Nox: it opens the assistant.
           brain.press(widget.desktop.cursor());

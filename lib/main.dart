@@ -232,6 +232,14 @@ class _NoxAppState extends State<NoxApp> with TrayListener {
     await _refreshMenu();
   }
 
+  /// Sends Nox to his nest (the island at the top of the screen) or out.
+  Future<void> _toggleNest() async {
+    final on = !widget.brain.workMode;
+    widget.brain.setWorkMode(on, widget.desktop);
+    await widget.prefs.setBool('work', on);
+    await _refreshMenu();
+  }
+
   Future<void> _refreshMenu() async {
     final mode = widget.brain.mode;
     final update = _update;
@@ -261,7 +269,7 @@ class _NoxAppState extends State<NoxApp> with TrayListener {
             checked: widget.brain.pranks.contains(prank)),
       MenuItem.separator(),
       MenuItem.checkbox(
-          key: 'work', label: 'Mode travail (Nox dans l\'île)', checked: widget.brain.workMode),
+          key: 'work', label: 'Nichoir (mode travail)', checked: widget.brain.workMode),
       MenuItem(key: 'today', label: "Aujourd'hui"),
       MenuItem(key: 'recall', label: 'Rappeler Nox'),
       MenuItem.checkbox(
@@ -316,10 +324,7 @@ class _NoxAppState extends State<NoxApp> with TrayListener {
       case 'today':
         _panelOpen ? _closePanel() : _openPanel();
       case 'work':
-        final on = !widget.brain.workMode;
-        widget.brain.setWorkMode(on, widget.desktop);
-        await widget.prefs.setBool('work', on);
-        await _refreshMenu();
+        await _toggleNest();
       case 'recall':
         _closePanel();
         if (widget.brain.workMode) {
@@ -381,6 +386,7 @@ class _NoxAppState extends State<NoxApp> with TrayListener {
                 desktop: widget.desktop,
                 onMouseOver: (over) => widget.desktop.setClickThrough(!over),
                 onDoubleClick: _openPanel,
+                onToggleNest: _toggleNest,
               ),
       ),
     );
