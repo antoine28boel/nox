@@ -54,7 +54,9 @@ Future<void> main() async {
       if (prefs.getBool('prank_${prank.name}') ?? true) prank,
   };
 
-  final brain = NoxBrain(mode: mode, pranks: pranks)..scale = desktop.scale();
+  final brain = NoxBrain(mode: mode, pranks: pranks)
+    ..scale = desktop.scale()
+    ..workMode = prefs.getBool('work') ?? false;
   final feather = renderFeather(desktop.scale());
   desktop.setFeatherImage(feather.bgra, feather.width, feather.height);
   brain.spawn(desktop, desktop.cursor());
@@ -258,6 +260,8 @@ class _NoxAppState extends State<NoxApp> with TrayListener {
             label: _prankLabels[prank]!,
             checked: widget.brain.pranks.contains(prank)),
       MenuItem.separator(),
+      MenuItem.checkbox(
+          key: 'work', label: 'Mode travail (Nox dans l\'île)', checked: widget.brain.workMode),
       MenuItem(key: 'today', label: "Aujourd'hui"),
       MenuItem(key: 'recall', label: 'Rappeler Nox'),
       MenuItem.checkbox(
@@ -311,8 +315,18 @@ class _NoxAppState extends State<NoxApp> with TrayListener {
         await _setMode(NoxMode.espiegle);
       case 'today':
         _panelOpen ? _closePanel() : _openPanel();
+      case 'work':
+        final on = !widget.brain.workMode;
+        widget.brain.setWorkMode(on, widget.desktop);
+        await widget.prefs.setBool('work', on);
+        await _refreshMenu();
       case 'recall':
         _closePanel();
+        if (widget.brain.workMode) {
+          widget.brain.setWorkMode(false, widget.desktop);
+          await widget.prefs.setBool('work', false);
+          await _refreshMenu();
+        }
         widget.brain.recall(widget.desktop, widget.desktop.cursor());
       case 'startup':
         _startup ? await launchAtStartup.disable() : await launchAtStartup.enable();

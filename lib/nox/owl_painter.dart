@@ -32,7 +32,17 @@ class OwlPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     if (pose.hidden) return;
+    if (pose.island < 1) _owl(canvas, size);
+    if (pose.island > 0) _islandPill(canvas);
+  }
+
+  void _owl(Canvas canvas, Size size) {
     final breath = 1 + 0.015 * math.sin(pose.time * 2.2);
+    final fade = 1 - pose.island;
+    if (fade < 1) {
+      canvas.saveLayer(Offset.zero & size,
+          Paint()..color = Color.fromRGBO(0, 0, 0, fade));
+    }
 
     canvas.save();
     canvas.translate(feet.dx, feet.dy);
@@ -49,6 +59,78 @@ class OwlPainter extends CustomPainter {
     if (pose.sleeping) _zzz(canvas);
 
     canvas.restore();
+    if (fade < 1) canvas.restore();
+  }
+
+  static const _night = Color(0xFF16110D);
+
+  /// The "dynamic island": a dark pill at the top of the screen where only
+  /// Nox's eyes show. Opened (expand = 1) when he is called.
+  void _islandPill(Canvas canvas) {
+    final a = pose.island;
+    final e = pose.expand;
+    final size = islandSize(a, e);
+    final rect = Rect.fromLTWH(
+        feet.dx - size.width / 2, kIslandTop, size.width, size.height);
+    final rrect = RRect.fromRectAndRadius(rect, Radius.circular(size.height / 2));
+
+    canvas.drawRRect(rrect, _fill(_night.withValues(alpha: a)));
+    canvas.drawRRect(
+        rrect,
+        Paint()
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 1
+          ..color = _iris.withValues(alpha: 0.25 * a));
+    if (a < 0.6) return;
+    final eyesAlpha = ((a - 0.6) / 0.4).clamp(0.0, 1.0);
+
+    final r = 6 + 6 * e;
+    final cy = rect.top + (a * 15) + e * 6;
+    final spread = 14 + 8 * e;
+    for (final side in [-1.0, 1.0]) {
+      final c = Offset(rect.center.dx + side * spread, cy);
+      _islandEye(canvas, c, r, eyesAlpha);
+    }
+    if (e > 0.3) {
+      final beakAlpha = ((e - 0.3) / 0.7).clamp(0.0, 1.0) * eyesAlpha;
+      final top = cy + r + 3;
+      final beak = Path()
+        ..moveTo(rect.center.dx - 4, top)
+        ..lineTo(rect.center.dx + 4, top)
+        ..lineTo(rect.center.dx, top + 7)
+        ..close();
+      canvas.drawPath(beak, _fill(_beak.withValues(alpha: beakAlpha)));
+    }
+  }
+
+  void _islandEye(Canvas canvas, Offset c, double r, double alpha) {
+    final iris = _iris.withValues(alpha: alpha);
+    final line = Paint()
+      ..color = iris
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 2
+      ..strokeCap = StrokeCap.round;
+    if (pose.happy) {
+      canvas.drawPath(
+          Path()
+            ..moveTo(c.dx - r, c.dy + r * 0.3)
+            ..quadraticBezierTo(c.dx, c.dy - r * 0.8, c.dx + r, c.dy + r * 0.3),
+          line);
+      return;
+    }
+    if (pose.sleeping || pose.eyeOpen < 0.15) {
+      canvas.drawPath(
+          Path()
+            ..moveTo(c.dx - r, c.dy)
+            ..quadraticBezierTo(c.dx, c.dy + r * 0.6, c.dx + r, c.dy),
+          line);
+      return;
+    }
+    canvas.drawCircle(c, r, _fill(iris));
+    final p = c + pose.look * (r * 0.35);
+    canvas.drawCircle(p, r * 0.6, _fill(_pupil.withValues(alpha: alpha)));
+    canvas.drawCircle(p + Offset(-r * 0.25, -r * 0.25), r * 0.2,
+        _fill(Colors.white.withValues(alpha: alpha)));
   }
 
   Paint _fill(Color c) => Paint()

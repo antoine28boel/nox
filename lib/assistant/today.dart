@@ -110,7 +110,7 @@ class TodayData {
       events: [
         if (events is List)
           for (final e in events)
-            if (AgendaEvent.fromJson(e) case final event?) event,
+            ?AgendaEvent.fromJson(e),
       ],
       tasks: [
         if (tasks is List)

@@ -325,4 +325,48 @@ void main() {
     expect(b.hitTest(b.pos + const Offset(0, -100)), isTrue);
     expect(b.hitTest(b.pos + const Offset(0, -260)), isFalse);
   });
+
+  test('work mode: flies into the island at the top center', () {
+    b.spawn(d, const Offset(800, 500));
+    run(b, d, 6);
+    b.setWorkMode(true, d);
+    run(b, d, 6);
+    expect(b.state, NoxState.docked);
+    expect(b.pos.dx, FakeDesktop.screen.center.dx);
+    expect(b.pose.island, 1);
+    final island = b.islandRect();
+    expect(island.top, greaterThanOrEqualTo(0));
+    expect(island.bottom, lessThan(60));
+    expect(b.hitTest(island.center), isTrue);
+    // Stays put when windows change.
+    d.foreground = null;
+    run(b, d, 30);
+    expect(b.state, NoxState.docked);
+  });
+
+  test('work mode: a click calls Nox, a second one sends him back', () {
+    b.workMode = true;
+    b.spawn(d, const Offset(800, 500));
+    run(b, d, 6);
+    expect(b.state, NoxState.docked);
+    final small = b.islandRect();
+    b.press(small.center);
+    run(b, d, 0.5);
+    expect(b.listening, isTrue);
+    expect(b.islandRect().width, greaterThan(small.width));
+    b.press(b.islandRect().center);
+    run(b, d, 0.5);
+    expect(b.listening, isFalse);
+    expect(b.state, NoxState.docked);
+  });
+
+  test('leaving work mode sends Nox back to perching', () {
+    b.workMode = true;
+    b.spawn(d, const Offset(800, 500));
+    run(b, d, 6);
+    b.setWorkMode(false, d);
+    run(b, d, 8);
+    expect(b.state, NoxState.perched);
+    expect(b.pose.island, 0);
+  });
 }

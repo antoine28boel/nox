@@ -32,6 +32,19 @@ class NoxPose extends ChangeNotifier {
   /// Body rotation in radians.
   double tilt = 0;
 
+  /// 0 = full owl, 1 = tucked into the "island" at the top of the screen.
+  double island = 0;
+
+  /// 0 = island with just the eyes, 1 = island opened (Nox listens).
+  double expand = 0;
+
   /// Asks the painter to redraw.
   void changed() => notifyListeners();
 }
+
+/// Size of the island pill (logical px) for a given [island]/[expand].
+Size islandSize(double island, double expand) =>
+    Size(36 + 80 * island + 60 * expand, 10 + 20 * island + 34 * expand);
+
+/// Gap between the top of the screen and the island (logical px).
+const kIslandTop = 6.0;

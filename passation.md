@@ -97,6 +97,12 @@ regard qui suit la souris, clignements, respiration, caresse (yeux ^ ^),
 glisser-lancer, sommeil après inactivité (2 min sage / 4 min espiègle),
 masqué en plein écran, menu : modes, rappeler, démarrage auto, quitter.
 
+**Mode travail (île)** : état `docked` ; Nox vole en haut au centre de
+l'écran et devient une pilule sombre façon « dynamic island » avec seulement
+ses yeux (suivent la souris, clignent, dorment). Clic = il est « appelé »
+(l'île s'agrandit, `brain.listening`) : c'est là que se branchera le panneau
+assistant. Réglage persistant (`work` dans shared_preferences).
+
 ### Jamais testé sur un vrai Windows — à vérifier en premier
 
 1. **Transparence** : pas de rectangle noir/blanc autour de Nox.

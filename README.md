@@ -15,7 +15,10 @@ Nox apparaît en haut de l'écran et va se poser. Son icône est près de
 l'horloge (clic gauche ou droit) :
 
 - **Mode sage** / **Mode espiègle**
-- **Rappeler Nox** : le fait revenir près de la souris
+- **Mode travail (Nox dans l'île)** : Nox s'installe en haut au centre de
+  l'écran, dans une petite île sombre où l'on ne voit que ses yeux. Un clic
+  sur l'île l'appelle (elle s'agrandit, il écoute) ; un second clic le renvoie.
+- **Rappeler Nox** : le fait revenir près de la souris (quitte le mode travail)
 - **Lancer au démarrage de Windows**
 - **Quitter**
 

@@ -6,8 +6,8 @@ import 'brain.dart';
 import 'owl_painter.dart';
 
 /// Size of Nox's window and where his feet sit inside it (logical pixels).
-const kNoxWindowSize = Size(200, 180);
-const kNoxFeet = Offset(100, 170);
+const kNoxWindowSize = NoxGeometry.windowSize;
+const kNoxFeet = NoxGeometry.windowFeet;
 
 /// Runs Nox's brain every frame, moves his window and draws him.
 class NoxView extends StatefulWidget {
@@ -87,6 +87,13 @@ class _NoxViewState extends State<NoxView> with SingleTickerProviderStateMixin {
     return Listener(
       behavior: HitTestBehavior.opaque,
       onPointerDown: (_) {
+        final brain = widget.brain;
+        if (brain.state == NoxState.docked) {
+          // In the island a single click calls Nox: it opens the assistant.
+          brain.press(widget.desktop.cursor());
+          if (brain.listening) widget.onDoubleClick();
+          return;
+        }
         final now = DateTime.now();
         final last = _lastDown;
         if (last != null && now.difference(last) < const Duration(milliseconds: 450)) {

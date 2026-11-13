@@ -7,7 +7,7 @@ import 'pose.dart';
 /// How lively Nox is. Set from the tray menu.
 enum NoxMode { sage, espiegle }
 
-enum NoxState { perched, flying, falling, dragged }
+enum NoxState { perched, flying, falling, dragged, docked }
 
 /// Mischief Nox gets up to in espiègle mode. Each can be turned off.
 enum NoxPrank {
@@ -54,6 +54,10 @@ class NoxGeometry {
   static const bodyRadiusY = 52.0;
   static const headCenter = Offset(0, -70);
   static const height = 120.0;
+
+  /// Nox's window (logical px) and where his feet sit inside it.
+  static const windowSize = Size(200, 180);
+  static const windowFeet = Offset(100, 170);
 
   /// Area kept free on the right of a title bar (minimize/maximize/close).
   static const captionButtons = 150.0;
@@ -117,6 +121,9 @@ class NoxBrain {
   bool hidden = false;
   bool sleeping = false;
 
+  /// Work mode: Nox stays in the island at the top of the screen.
+  bool workMode = false;
+
   double _t = 0;
   double _stateTime = 0;
   double _nextDecision = 5;
@@ -133,6 +140,9 @@ class NoxBrain {
   double _petAmount = 0;
   Offset _look = Offset.zero;
   double _headTurn = 0;
+  double _island = 0;
+  double _expand = 0;
+  double _expandedUntil = 0;
 
   final NoxPose pose = NoxPose();
 
@@ -147,15 +157,63 @@ class NoxBrain {
     _recoverAt = 0.25;
   }
 
-  /// Whether [point] (physical) is on Nox's body.
+  /// Whether [point] (physical) is on Nox's body (or on his island).
   bool hitTest(Offset point) {
     // While he hunts the cursor, clicks must still reach what is under him.
     if (hidden || hunting) return false;
+    if (state == NoxState.docked) return islandRect().inflate(4 * _px).contains(point);
     final c = pos + NoxGeometry.bodyCenter * _px;
     final dx = (point.dx - c.dx) / (NoxGeometry.bodyRadiusX * _px);
     final dy = (point.dy - c.dy) / (NoxGeometry.bodyRadiusY * _px);
     return dx * dx + dy * dy <= 1;
   }
+
+  /// Island bounds on screen (physical px).
+  Rect islandRect() {
+    final size = islandSize(_island, _expand);
+    final topLeft = pos - NoxGeometry.windowFeet * _px;
+    return Rect.fromLTWH(
+      topLeft.dx + (NoxGeometry.windowFeet.dx - size.width / 2) * _px,
+      topLeft.dy + kIslandTop * _px,
+      size.width * _px,
+      size.height * _px,
+    );
+  }
+
+  /// Where Nox's feet are when he sits in the island: window glued to the
+  /// top of the screen, centered.
+  Offset dockPoint(Desktop d) {
+    final m = d.monitorBounds(pos);
+    return Offset(m.center.dx, m.top + NoxGeometry.windowFeet.dy * _px);
+  }
+
+  /// Turns work mode on or off (tray menu).
+  void setWorkMode(bool on, Desktop d) {
+    workMode = on;
+    sleeping = false;
+    hunting = false;
+    _expandedUntil = 0;
+    if (on && state == NoxState.perched) {
+      _takeOff(d);
+    } else if (!on && state == NoxState.docked) {
+      vel = Offset(0, 300 * _px);
+      _recoverAt = 0.3;
+      _setState(NoxState.falling);
+    }
+  }
+
+  /// Mouse pressed on Nox: in the island it calls him, elsewhere it grabs him.
+  void press(Offset cursor) {
+    if (state == NoxState.docked) {
+      sleeping = false;
+      _expandedUntil = _expandedUntil > _t ? 0 : _t + 6;
+      return;
+    }
+    startDrag(cursor);
+  }
+
+  /// Whether Nox is opened in the island, listening.
+  bool get listening => state == NoxState.docked && _t < _expandedUntil;
 
   /// Called when the user presses the mouse on Nox.
   void startDrag(Offset cursor) {
@@ -200,6 +258,8 @@ class NoxBrain {
         _updateFalling(dt, d);
       case NoxState.dragged:
         _updateDragged(dt, d, cursor);
+      case NoxState.docked:
+        pos = dockPoint(d);
     }
 
     _updateFeather(dt, d);
@@ -233,7 +293,9 @@ class NoxBrain {
         sleeping = false;
         _nextDecision = _t + 2;
       }
-    } else if (state == NoxState.perched && idle > _sleepAfterMs) {
+    } else if ((state == NoxState.perched || state == NoxState.docked) &&
+        !listening &&
+        idle > _sleepAfterMs) {
       sleeping = true;
     }
   }
@@ -241,6 +303,10 @@ class NoxBrain {
   int get _sleepAfterMs => mode == NoxMode.sage ? 120000 : 240000;
 
   void _updatePerched(double dt, Desktop d) {
+    if (workMode) {
+      _takeOff(d);
+      return;
+    }
     final p = perch;
     if (p == null) {
       _fall();
@@ -514,11 +580,17 @@ class NoxBrain {
       _updateHunting(dt, d);
       return;
     }
-    var t = target;
-    var goal = t == null ? null : _targetPoint(d, t);
-    if (t == null || goal == null) {
-      t = target = _chooseTarget(d);
-      goal = _targetPoint(d, t) ?? pos;
+    Perch? t;
+    Offset? goal;
+    if (workMode) {
+      goal = dockPoint(d);
+    } else {
+      t = target;
+      goal = t == null ? null : _targetPoint(d, t);
+      if (t == null || goal == null) {
+        t = target = _chooseTarget(d);
+        goal = _targetPoint(d, t) ?? pos;
+      }
     }
 
     final toGoal = goal - pos;
@@ -536,6 +608,14 @@ class NoxBrain {
     pos += vel * dt;
 
     if (dist < 4 * _px || (dist < 12 * _px && vel.distance < 120 * _px)) {
+      if (t == null) {
+        pos = goal;
+        vel = Offset.zero;
+        perch = null;
+        target = null;
+        _setState(NoxState.docked);
+        return;
+      }
       final handle = t.handle;
       if (handle != null && !d.isTopAt(handle, Offset(goal.dx, goal.dy + 14 * _px))) {
         target = _chooseTarget(d);
@@ -656,6 +736,9 @@ class NoxBrain {
     final flying = state == NoxState.flying;
     final falling = state == NoxState.falling;
     final dragged = state == NoxState.dragged;
+    final docked = state == NoxState.docked;
+    _island = (_island + (docked ? dt : -dt) * 4).clamp(0.0, 1.0);
+    _expand = (_expand + (listening ? dt : -dt) * 6).clamp(0.0, 1.0);
 
     _flapPhase += dt * (flying ? 22 : (falling ? 30 : 0));
 
@@ -663,6 +746,8 @@ class NoxBrain {
       ..hidden = hidden
       ..time = _t
       ..sleeping = sleeping
+      ..island = _island
+      ..expand = _expand
       ..happy = _t < _happyUntil
       ..carrying = carrying
       ..surprised = falling || dragged
