@@ -19,7 +19,14 @@ import 'nox/nox_view.dart';
 import 'update/updater.dart';
 import 'win/win_desktop.dart';
 
-Future<void> main() async {
+Future<void> main(List<String> args) async {
+  // The unpacked new version replacing the old one: no window, no tray.
+  final install = parseInstallArgs(args);
+  if (install != null) {
+    await finishInstall(install);
+    exit(0);
+  }
+
   WidgetsFlutterBinding.ensureInitialized();
 
   await windowManager.ensureInitialized();
@@ -84,6 +91,10 @@ class _NoxAppState extends State<NoxApp> with TrayListener {
   /// An update Nox is offering, waiting for a yes or a no.
   UpdateInfo? _update;
   bool _installing = false;
+
+  /// Why the last accepted update did not install.
+  String? _updateError;
+  Timer? _cleanUpdate;
   Timer? _firstCheck;
   Timer? _dailyCheck;
 
@@ -252,6 +263,8 @@ class _NoxAppState extends State<NoxApp> with TrayListener {
     _firstToday = Timer(const Duration(seconds: 5), _refreshToday);
     _loadBrief();
     _updateCarrying();
+    // Lets the installer that started this Nox finish before cleaning up.
+    _cleanUpdate = Timer(const Duration(seconds: 30), cleanUpdate);
     _briefTimer = Timer.periodic(const Duration(minutes: 1), (_) => _checkBrief());
   }
 
@@ -281,11 +294,15 @@ class _NoxAppState extends State<NoxApp> with TrayListener {
       return;
     }
     _installing = true;
+    _updateError = null;
     await _refreshMenu();
-    if (await downloadAndInstall(update)) {
+    final error = await downloadAndInstall(update);
+    if (error == null) {
       await _quit();
+      return;
     }
-    // The download failed: keep the offer so it can be tried again.
+    // Keep the offer so it can be tried again.
+    _updateError = error;
     _installing = false;
     await _refreshMenu();
   }
@@ -319,7 +336,10 @@ class _NoxAppState extends State<NoxApp> with TrayListener {
     final mode = widget.brain.mode;
     final update = _update;
     await trayManager.setContextMenu(Menu(items: [
-      MenuItem(key: 'title', label: 'Nox', disabled: true),
+      MenuItem(
+          key: 'title',
+          label: kNoxBuild > 0 ? 'Nox — version $kNoxBuild' : 'Nox — version locale',
+          disabled: true),
       MenuItem.separator(),
       if (update != null) ...[
         MenuItem(
@@ -328,6 +348,8 @@ class _NoxAppState extends State<NoxApp> with TrayListener {
                 ? 'Mise à jour en cours…'
                 : 'Nox apporte une mise à jour (version ${update.build})',
             disabled: true),
+        if (_updateError != null && !_installing)
+          MenuItem(key: 'update_error', label: _updateError, disabled: true),
         if (!_installing) MenuItem(key: 'update_accept', label: 'Accepter'),
         if (!_installing) MenuItem(key: 'update_decline', label: 'Refuser'),
         MenuItem.separator(),
@@ -432,6 +454,7 @@ class _NoxAppState extends State<NoxApp> with TrayListener {
     _todayTimer?.cancel();
     _firstToday?.cancel();
     _briefTimer?.cancel();
+    _cleanUpdate?.cancel();
     trayManager.removeListener(this);
     super.dispose();
   }

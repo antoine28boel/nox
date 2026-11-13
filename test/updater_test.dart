@@ -68,4 +68,26 @@ void main() {
       expect(parseCertutilHash('CertUtil: -hashfile command FAILED'), isNull);
     });
   });
+
+  group('parseInstallArgs', () {
+    test('reads the installer command line', () {
+      final r = parseInstallArgs(['--nox-install', r'C:\Nox', '4242'])!;
+      expect(r.target, r'C:\Nox');
+      expect(r.oldPid, 4242);
+    });
+
+    test('a normal start is not an install', () {
+      expect(parseInstallArgs([]), isNull);
+      expect(parseInstallArgs(['--nox-install', r'C:\Nox']), isNull);
+      expect(parseInstallArgs(['--nox-install', r'C:\Nox', 'abc']), isNull);
+      expect(parseInstallArgs(['--other', r'C:\Nox', '1']), isNull);
+    });
+  });
+
+  test('copyOrder copies nox.exe last', () {
+    expect(
+      copyOrder(['nox.exe', r'data\app.so', 'flutter_windows.dll', r'data\icudtl.dat']),
+      [r'data\app.so', r'data\icudtl.dat', 'flutter_windows.dll', 'nox.exe'],
+    );
+  });
 }
