@@ -13,6 +13,7 @@ import 'assistant/brief.dart';
 import 'assistant/ha_client.dart';
 import 'assistant/today.dart';
 import 'assistant/today_panel.dart';
+import 'assistant/vikunja_client.dart';
 import 'nox/brain.dart';
 import 'nox/feather.dart';
 import 'nox/nox_view.dart';
@@ -103,7 +104,6 @@ class _NoxAppState extends State<NoxApp> with TrayListener {
   Timer? _outsideClick;
   TodayData? _today;
   bool _todayLoading = false;
-  String? _todayError;
   Timer? _todayTimer;
 
   // Morning brief.
@@ -130,21 +130,15 @@ class _NoxAppState extends State<NoxApp> with TrayListener {
   Future<void> _refreshToday() async {
     if (!_haConfigured || _todayLoading) return;
     setState(() => _todayLoading = true);
-    String? error;
     try {
       final data = await HaClient(_haUrl, _haToken).fetchToday(DateTime.now());
       _today = data;
       await widget.prefs.setString('today_cache', jsonEncode(data.toJson()));
-    } on HaException catch (e) {
-      error = e.message;
     } catch (_) {
-      error = 'Home Assistant injoignable';
+      // Offline: the cached day stays; the tabs show their own errors.
     }
     if (!mounted) return;
-    setState(() {
-      _todayLoading = false;
-      _todayError = error;
-    });
+    setState(() => _todayLoading = false);
   }
 
   void _loadBrief() {
@@ -209,16 +203,6 @@ class _NoxAppState extends State<NoxApp> with TrayListener {
     await _refreshMenu();
   }
 
-  String get _todayStatus {
-    if (!_haConfigured) return '';
-    if (_todayLoading) return 'Actualisation…';
-    final today = _today;
-    final since = today == null ? '' : ' — données de ${hhmm(today.fetchedAt)}';
-    final error = _todayError;
-    if (error != null) return '$error$since';
-    return today == null ? '' : 'À jour à ${hhmm(today.fetchedAt)}';
-  }
-
   Future<String?> _saveHaSettings(String url, String token) async {
     final base = normalizeHaUrl(url);
     if (base == null) return 'Adresse invalide.';
@@ -234,6 +218,27 @@ class _NoxAppState extends State<NoxApp> with TrayListener {
     await widget.prefs.setString('ha_url', base);
     await widget.prefs.setString('ha_token', secret);
     unawaited(_refreshToday());
+    return null;
+  }
+
+  String get _vikunjaUrl => widget.prefs.getString('vikunja_url') ?? '';
+  String get _vikunjaToken => widget.prefs.getString('vikunja_token') ?? '';
+
+  Future<String?> _saveVikunjaSettings(String url, String token) async {
+    final base = normalizeVikunjaUrl(url);
+    if (base == null) return 'Adresse invalide.';
+    final secret = token.trim().isEmpty ? _vikunjaToken : token.trim();
+    if (secret.isEmpty) return 'Il manque le jeton.';
+    try {
+      await VikunjaClient(base, secret).ping();
+    } on VikunjaException catch (e) {
+      return e.message;
+    } catch (_) {
+      return 'Vikunja injoignable à cette adresse.';
+    }
+    await widget.prefs.setString('vikunja_url', base);
+    await widget.prefs.setString('vikunja_token', secret);
+    if (mounted) setState(() {});
     return null;
   }
 
@@ -495,10 +500,14 @@ class _NoxAppState extends State<NoxApp> with TrayListener {
                 now: DateTime.now(),
                 data: _today,
                 brief: _todayBrief,
-                status: _todayStatus,
                 configured: _haConfigured,
                 haUrl: _haUrl,
                 client: _haConfigured ? HaClient(_haUrl, _haToken) : null,
+                vikunjaUrl: _vikunjaUrl,
+                vikunja: _vikunjaUrl.isNotEmpty && _vikunjaToken.isNotEmpty
+                    ? VikunjaClient(_vikunjaUrl, _vikunjaToken)
+                    : null,
+                onSaveVikunja: _saveVikunjaSettings,
                 onRefresh: _refreshToday,
                 onClose: _closePanel,
                 onSaveSettings: _saveHaSettings,

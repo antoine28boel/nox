@@ -12,20 +12,21 @@ void main() {
         body: TodayPanel(
           now: DateTime(2026, 11, 15, 9),
           data: null,
-          status: '',
           configured: true,
           haUrl: 'https://ha.test',
           onRefresh: () {},
           onClose: () {},
           onSaveSettings: (_, _) async => null,
+          onSaveVikunja: (_, _) async => null,
         ),
       ),
     ));
-    for (final label in ['Jour', 'Musique', 'Maison', 'Agenda', 'Tâches']) {
+    for (final label in ['Suivi', 'Musique', 'Maison', 'Agenda', 'Tâches']) {
       expect(find.text(label), findsOneWidget);
     }
+    expect(find.textContaining('relié à Vikunja'), findsOneWidget);
     await tester.tap(find.text('Maison'));
     await tester.pumpAndSettle();
-    expect(find.textContaining('pas encore relié'), findsOneWidget);
+    expect(find.textContaining('relié à Home Assistant'), findsOneWidget);
   });
 }

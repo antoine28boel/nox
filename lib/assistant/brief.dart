@@ -18,8 +18,7 @@ String dayKey(DateTime d) =>
 bool briefDue(DateTime now, String? lastDay) =>
     now.hour >= kBriefFromHour && lastDay != dayKey(now);
 
-bool _sameDay(DateTime a, DateTime b) =>
-    a.year == b.year && a.month == b.month && a.day == b.day;
+bool _sameDay(DateTime a, DateTime b) => a.year == b.year && a.month == b.month && a.day == b.day;
 
 /// Whether [data] describes the day of [now] (and not yesterday's cache).
 bool isFromToday(TodayData data, DateTime now) => _sameDay(data.fetchedAt, now);
@@ -37,12 +36,17 @@ const _wet = {'rainy', 'pouring', 'lightning-rainy', 'hail', 'snowy-rainy'};
 String offlineBrief(TodayData data, DateTime now) {
   final words = <String>['${_greeting(now)} !'];
 
-  final timed = [for (final e in data.events) if (!e.allDay && e.end.isAfter(now)) e];
+  final timed = [
+    for (final e in data.events)
+      if (!e.allDay && e.end.isAfter(now)) e,
+  ];
   if (timed.isNotEmpty) {
     final next = timed.first;
-    words.add(next.start.isAfter(now)
-        ? 'Prochain rendez-vous à ${hhmm(next.start)} : ${next.title}.'
-        : '« ${next.title} » est en cours.');
+    words.add(
+      next.start.isAfter(now)
+          ? 'Prochain rendez-vous à ${hhmm(next.start)} : ${next.title}.'
+          : '« ${next.title} » est en cours.',
+    );
   } else if (data.events.isEmpty) {
     words.add('Rien à l\'agenda.');
   } else {

@@ -74,7 +74,17 @@ class HomeDevice {
 const _toggleDomains = {'light', 'switch', 'fan', 'input_boolean'};
 
 /// Domains shown in the "Maison" tab, in this order.
-const homeDomains = ['scene', 'script', 'light', 'switch', 'fan', 'cover', 'climate', 'lock', 'input_boolean'];
+const homeDomains = [
+  'scene',
+  'script',
+  'light',
+  'switch',
+  'fan',
+  'cover',
+  'climate',
+  'lock',
+  'input_boolean',
+];
 
 const homeDomainLabels = {
   'scene': 'Scènes',
@@ -108,16 +118,18 @@ List<MediaPlayer> parseMediaPlayers(Object? states) {
     if (state == 'unavailable' || state == 'unknown') continue;
     final attrs = s['attributes'] is Map ? s['attributes'] as Map : const {};
     final features = attrs['supported_features'];
-    players.add(MediaPlayer(
-      id: id,
-      name: _name(s, id),
-      state: state,
-      title: _string(attrs['media_title']),
-      artist: _string(attrs['media_artist']) ?? _string(attrs['media_album_name']),
-      volume: _double(attrs['volume_level']),
-      picture: _string(attrs['entity_picture']),
-      features: features is int ? features : 0,
-    ));
+    players.add(
+      MediaPlayer(
+        id: id,
+        name: _name(s, id),
+        state: state,
+        title: _string(attrs['media_title']),
+        artist: _string(attrs['media_artist']) ?? _string(attrs['media_album_name']),
+        volume: _double(attrs['volume_level']),
+        picture: _string(attrs['entity_picture']),
+        features: features is int ? features : 0,
+      ),
+    );
   }
   int rank(MediaPlayer p) => p.playing ? 0 : (p.active ? 1 : 2);
   players.sort((a, b) {
@@ -143,21 +155,21 @@ Map<String, List<HomeDevice>> parseHomeDevices(Object? states) {
     // Groups made by integrations, hidden ones…
     if (attrs['hidden'] == true) continue;
     final brightness = attrs['brightness'];
-    (byDomain[domain] ??= []).add(HomeDevice(
-      id: id,
-      name: _name(s, id),
-      state: state,
-      brightness: brightness is num ? brightness.round() : null,
-      temperature: _double(attrs['current_temperature']),
-      target: _double(attrs['temperature']),
-    ));
+    (byDomain[domain] ??= []).add(
+      HomeDevice(
+        id: id,
+        name: _name(s, id),
+        state: state,
+        brightness: brightness is num ? brightness.round() : null,
+        temperature: _double(attrs['current_temperature']),
+        target: _double(attrs['temperature']),
+      ),
+    );
   }
   for (final list in byDomain.values) {
     list.sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
   }
-  return {
-    for (final d in homeDomains) d: ?byDomain[d],
-  };
+  return {for (final d in homeDomains) d: ?byDomain[d]};
 }
 
 /// "Allumée", "Ouvert", "19,5 °C → 20 °C"…
@@ -179,12 +191,15 @@ String deviceLabel(HomeDevice d) {
     case 'lock':
       return const {'locked': 'Verrouillée', 'unlocked': 'Déverrouillée'}[d.state] ?? d.state;
     case 'climate':
-      String t(double v) => '${v.toStringAsFixed(v.truncateToDouble() == v ? 0 : 1).replaceAll('.', ',')} °C';
+      String t(double v) =>
+          '${v.toStringAsFixed(v.truncateToDouble() == v ? 0 : 1).replaceAll('.', ',')} °C';
       final parts = [
         if (d.temperature != null) t(d.temperature!),
         if (d.target != null) '→ ${t(d.target!)}',
       ];
-      final mode = const {'off': 'Arrêt', 'heat': 'Chauffe', 'cool': 'Clim', 'auto': 'Auto'}[d.state] ?? d.state;
+      final mode =
+          const {'off': 'Arrêt', 'heat': 'Chauffe', 'cool': 'Clim', 'auto': 'Auto'}[d.state] ??
+          d.state;
       return [mode, ...parts].join(' · ');
     case 'scene':
     case 'script':
@@ -244,14 +259,22 @@ List<TodoItem> parseTodoList(Object? json, String entityId) {
     final summary = _string(item['summary']);
     final uid = _string(item['uid']);
     if (summary == null || uid == null) continue;
-    items.add(TodoItem(
-      uid: uid,
-      summary: summary,
-      done: item['status'] == 'completed',
-      due: _string(item['due']),
-    ));
+    items.add(
+      TodoItem(
+        uid: uid,
+        summary: summary,
+        done: item['status'] == 'completed',
+        due: _string(item['due']),
+      ),
+    );
   }
-  final todo = [for (final i in items) if (!i.done) i];
-  final done = [for (final i in items) if (i.done) i];
+  final todo = [
+    for (final i in items)
+      if (!i.done) i,
+  ];
+  final done = [
+    for (final i in items)
+      if (i.done) i,
+  ];
   return [...todo, ...done];
 }

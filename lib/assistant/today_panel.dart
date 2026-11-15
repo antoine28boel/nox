@@ -5,6 +5,7 @@ import 'ha_client.dart';
 import 'panel_style.dart';
 import 'panel_tabs.dart';
 import 'today.dart';
+import 'vikunja_client.dart';
 
 /// Size of the panel window, in logical pixels.
 const kPanelSize = Size(420, 600);
@@ -14,22 +15,28 @@ const _text = panelText;
 const _muted = panelMuted;
 const _accent = panelAccent;
 
-/// The assistant panel, in tabs: the day (brief, weather, agenda, tasks),
-/// music, home devices, the week's agenda and the to-do lists, all from
-/// Home Assistant; plus the form to connect to it.
+/// Saves an address and a token (an empty token keeps the saved one).
+/// Returns an error message, or null when the connection works.
+typedef SaveServer = Future<String?> Function(String url, String token);
+
+/// The assistant panel, in tabs: project tracking (Vikunja), music, home
+/// devices, the week's agenda and the to-do lists (Home Assistant); plus
+/// the forms to connect to both.
 class TodayPanel extends StatefulWidget {
   const TodayPanel({
     super.key,
     required this.now,
     required this.data,
     this.brief,
-    required this.status,
     required this.configured,
     required this.haUrl,
     this.client,
+    this.vikunjaUrl = '',
+    this.vikunja,
     required this.onRefresh,
     required this.onClose,
     required this.onSaveSettings,
+    required this.onSaveVikunja,
   });
 
   final DateTime now;
@@ -40,9 +47,6 @@ class TodayPanel extends StatefulWidget {
   /// Today's brief, if Nox has brought one.
   final Brief? brief;
 
-  /// One line about freshness: "À jour à 09:12", "Hors ligne…".
-  final String status;
-
   /// Whether a Home Assistant address and token are saved.
   final bool configured;
   final String haUrl;
@@ -50,50 +54,25 @@ class TodayPanel extends StatefulWidget {
   /// Connection to Home Assistant, when configured.
   final HaClient? client;
 
+  final String vikunjaUrl;
+
+  /// Connection to Vikunja, when configured.
+  final VikunjaClient? vikunja;
+
   final VoidCallback onRefresh;
   final VoidCallback onClose;
-
-  /// Saves the address and token (an empty token keeps the saved one).
-  /// Returns an error message, or null when the connection works.
-  final Future<String?> Function(String url, String token) onSaveSettings;
+  final SaveServer onSaveSettings;
+  final SaveServer onSaveVikunja;
 
   @override
   State<TodayPanel> createState() => _TodayPanelState();
 }
 
 class _TodayPanelState extends State<TodayPanel> {
-  late bool _settings = !widget.configured;
-  late final _url = TextEditingController(text: widget.haUrl);
-  final _token = TextEditingController();
-  bool _saving = false;
-  String? _error;
+  late bool _settings = !widget.configured && widget.vikunja == null;
 
   /// Bumped by "Actualiser": rebuilds the live tabs, which reload.
   int _reload = 0;
-
-  @override
-  void dispose() {
-    _url.dispose();
-    _token.dispose();
-    super.dispose();
-  }
-
-  Future<void> _save() async {
-    setState(() {
-      _saving = true;
-      _error = null;
-    });
-    final error = await widget.onSaveSettings(_url.text, _token.text);
-    if (!mounted) return;
-    setState(() {
-      _saving = false;
-      _error = error;
-      if (error == null) {
-        _token.clear();
-        _settings = false;
-      }
-    });
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -112,7 +91,7 @@ class _TodayPanelState extends State<TodayPanel> {
               children: [
                 _header(),
                 if (!_settings) _tabBar(),
-                Expanded(child: _settings ? _settingsForm() : _tabs()),
+                Expanded(child: _settings ? _settingsForms() : _tabs()),
               ],
             ),
           ),
@@ -122,6 +101,12 @@ class _TodayPanelState extends State<TodayPanel> {
   }
 
   Widget _header() {
+    final weather = widget.data?.weather;
+    final subtitle = [
+      frenchDate(widget.now),
+      if (!_settings && weather != null && isFromToday(widget.data!, widget.now))
+        weatherLabel(weather),
+    ].join(' · ');
     return Padding(
       padding: const EdgeInsets.fromLTRB(18, 12, 6, 6),
       child: Row(
@@ -130,13 +115,20 @@ class _TodayPanelState extends State<TodayPanel> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(_settings ? 'Home Assistant' : 'Nox',
-                    style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w700)),
-                Text(frenchDate(widget.now), style: const TextStyle(color: _muted)),
+                Text(
+                  _settings ? 'Réglages' : 'Nox',
+                  style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w700),
+                ),
+                Text(
+                  subtitle,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(color: _muted),
+                ),
               ],
             ),
           ),
-          if (!_settings && widget.configured)
+          if (!_settings)
             _HeaderButton(
               label: 'Actualiser',
               onTap: () {
@@ -156,11 +148,11 @@ class _TodayPanelState extends State<TodayPanel> {
 
   Widget _tabBar() {
     Tab tab(IconData icon, String label) => Tab(
-          height: 50,
-          iconMargin: const EdgeInsets.only(bottom: 2),
-          icon: Icon(icon, size: 20),
-          child: Text(label, style: const TextStyle(fontSize: 11)),
-        );
+      height: 50,
+      iconMargin: const EdgeInsets.only(bottom: 2),
+      icon: Icon(icon, size: 20),
+      child: Text(label, style: const TextStyle(fontSize: 11)),
+    );
     return TabBar(
       labelColor: _accent,
       unselectedLabelColor: _muted,
@@ -168,7 +160,7 @@ class _TodayPanelState extends State<TodayPanel> {
       dividerColor: Colors.transparent,
       labelPadding: EdgeInsets.zero,
       tabs: [
-        tab(Icons.wb_sunny_outlined, 'Jour'),
+        tab(Icons.track_changes_rounded, 'Suivi'),
         tab(Icons.music_note_rounded, 'Musique'),
         tab(Icons.home_outlined, 'Maison'),
         tab(Icons.calendar_month_outlined, 'Agenda'),
@@ -178,90 +170,123 @@ class _TodayPanelState extends State<TodayPanel> {
   }
 
   Widget _tabs() {
+    Widget missing(String what) => Padding(
+      padding: const EdgeInsets.all(18),
+      child: PanelNote('Nox n\'est pas encore relié à $what. Ouvre « Réglages ».'),
+    );
+    Widget keyed(Widget child) => KeyedSubtree(key: ValueKey(_reload), child: child);
     final client = widget.client;
-    Widget live(Widget Function(HaClient client) build) => client == null
-        ? const Padding(
-            padding: EdgeInsets.all(18),
-            child: PanelNote('Nox n\'est pas encore relié à Home Assistant. Ouvre « Réglages ».'),
-          )
-        : KeyedSubtree(key: ValueKey(_reload), child: build(client));
+    Widget live(Widget Function(HaClient client) build) =>
+        client == null ? missing('Home Assistant') : keyed(build(client));
+    final vikunja = widget.vikunja;
     return TabBarView(
       children: [
-        _today(),
+        vikunja == null ? missing('Vikunja') : keyed(TrackingTab(client: vikunja)),
         live((c) => MusicTab(client: c)),
         live((c) => HomeTab(client: c)),
-        live((c) => AgendaTab(client: c, now: widget.now)),
+        live((c) => AgendaTab(client: c, now: widget.now, brief: widget.brief)),
         live((c) => TasksTab(client: c)),
       ],
     );
   }
 
-  Widget _today() {
-    final data = widget.data;
+  Widget _settingsForms() {
     return ListView(
-      padding: const EdgeInsets.fromLTRB(14, 4, 14, 14),
+      padding: const EdgeInsets.fromLTRB(14, 8, 14, 18),
       children: [
-        Padding(
-          padding: const EdgeInsets.only(left: 4, bottom: 8),
-          child: Text(widget.status, style: const TextStyle(color: _muted, fontSize: 12)),
+        _ServerForm(
+          title: 'Home Assistant',
+          intro:
+              'Adresse de ton Home Assistant et jeton d\'accès longue durée '
+              '(profil utilisateur → Sécurité → Jetons d\'accès longue durée). '
+              'Le jeton reste sur ce PC.',
+          url: widget.haUrl,
+          hint: 'https://ha.exemple.fr',
+          configured: widget.configured,
+          onSave: widget.onSaveSettings,
         ),
-        if (widget.brief case final brief?)
-          PanelSection(title: 'Brief', children: [
-            Text(brief.text, style: const TextStyle(height: 1.4)),
-            if (brief.byAi)
-              const Padding(
-                padding: EdgeInsets.only(top: 6),
-                child: Text('Rédigé par l\'IA de Home Assistant',
-                    style: TextStyle(color: _muted, fontSize: 11)),
-              ),
-          ]),
-        if (!widget.configured)
-          const PanelSection(title: 'Connexion', children: [
-            Text('Nox n\'est pas encore relié à Home Assistant. Ouvre « Réglages ».'),
-          ])
-        else if (data == null)
-          const PanelSection(title: 'En attente', children: [
-            Text('Aucune donnée pour l\'instant.'),
-          ])
-        else ...[
-          if (data.weather != null)
-            PanelSection(title: 'Météo', children: [Text(weatherLabel(data.weather!))]),
-          PanelSection(title: 'Agenda', children: [
-            if (data.events.isEmpty) const Text('Rien de prévu.', style: TextStyle(color: _muted)),
-            for (final e in data.events) _EventRow(event: e),
-          ]),
-          PanelSection(title: 'Tâches', children: [
-            if (data.tasks.isEmpty)
-              const Text('Aucune tâche en attente.', style: TextStyle(color: _muted)),
-            for (final t in data.tasks)
-              Padding(
-                padding: const EdgeInsets.symmetric(vertical: 2),
-                child: Text('•  $t'),
-              ),
-          ]),
-        ],
+        _ServerForm(
+          title: 'Vikunja',
+          intro:
+              'Adresse de ton Vikunja et jeton d\'API (Paramètres → Jetons d\'API, '
+              'droits de lecture sur les projets et les tâches). Les tâches d\'une '
+              'colonne Kanban « En cours » ou avec l\'étiquette « En cours » sont '
+              'suivies ; le projet « Claude » regroupe les tâches de Claude.',
+          url: widget.vikunjaUrl,
+          hint: 'http://vikunja.local:3456',
+          configured: widget.vikunja != null,
+          onSave: widget.onSaveVikunja,
+        ),
       ],
     );
   }
+}
 
-  Widget _settingsForm() {
-    return ListView(
-      padding: const EdgeInsets.fromLTRB(18, 8, 18, 18),
+/// Address and token of one server, with a "test and save" button.
+class _ServerForm extends StatefulWidget {
+  const _ServerForm({
+    required this.title,
+    required this.intro,
+    required this.url,
+    required this.hint,
+    required this.configured,
+    required this.onSave,
+  });
+
+  final String title;
+  final String intro;
+  final String url;
+  final String hint;
+  final bool configured;
+  final SaveServer onSave;
+
+  @override
+  State<_ServerForm> createState() => _ServerFormState();
+}
+
+class _ServerFormState extends State<_ServerForm> {
+  late final _url = TextEditingController(text: widget.url);
+  final _token = TextEditingController();
+  bool _saving = false;
+  String? _error;
+  bool _saved = false;
+
+  @override
+  void dispose() {
+    _url.dispose();
+    _token.dispose();
+    super.dispose();
+  }
+
+  Future<void> _save() async {
+    setState(() {
+      _saving = true;
+      _error = null;
+      _saved = false;
+    });
+    final error = await widget.onSave(_url.text, _token.text);
+    if (!mounted) return;
+    setState(() {
+      _saving = false;
+      _error = error;
+      _saved = error == null;
+      if (error == null) _token.clear();
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return PanelSection(
+      title: widget.title,
       children: [
-        const Text(
-          'Adresse de ton Home Assistant et jeton d\'accès longue durée '
-          '(profil utilisateur → Sécurité → Jetons d\'accès longue durée). '
-          'Le jeton reste sur ce PC.',
-          style: TextStyle(color: _muted),
-        ),
-        const SizedBox(height: 14),
+        Text(widget.intro, style: const TextStyle(color: _muted, fontSize: 13)),
+        const SizedBox(height: 8),
         TextField(
           controller: _url,
           enabled: !_saving,
-          decoration: const InputDecoration(
-              labelText: 'Adresse', hintText: 'https://ha.exemple.fr'),
+          decoration: InputDecoration(labelText: 'Adresse', hintText: widget.hint),
         ),
-        const SizedBox(height: 10),
+        const SizedBox(height: 8),
         TextField(
           controller: _token,
           enabled: !_saving,
@@ -271,18 +296,24 @@ class _TodayPanelState extends State<TodayPanel> {
             hintText: widget.configured ? 'Laisser vide pour garder le jeton actuel' : null,
           ),
         ),
-        const SizedBox(height: 16),
+        const SizedBox(height: 12),
         if (_error != null)
           Padding(
-            padding: const EdgeInsets.only(bottom: 12),
+            padding: const EdgeInsets.only(bottom: 10),
             child: Text(_error!, style: const TextStyle(color: panelError)),
           ),
-        Align(
-          alignment: Alignment.centerLeft,
-          child: FilledButton(
-            onPressed: _saving ? null : _save,
-            child: Text(_saving ? 'Test en cours…' : 'Tester et enregistrer'),
-          ),
+        Row(
+          children: [
+            FilledButton(
+              onPressed: _saving ? null : _save,
+              child: Text(_saving ? 'Test en cours…' : 'Tester et enregistrer'),
+            ),
+            if (_saved)
+              const Padding(
+                padding: EdgeInsets.only(left: 10),
+                child: Text('Connecté', style: TextStyle(color: _accent)),
+              ),
+          ],
         ),
       ],
     );
@@ -306,29 +337,6 @@ class _HeaderButton extends StatelessWidget {
         tapTargetSize: MaterialTapTargetSize.shrinkWrap,
       ),
       child: Text(label),
-    );
-  }
-}
-
-class _EventRow extends StatelessWidget {
-  const _EventRow({required this.event});
-
-  final AgendaEvent event;
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 3),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          SizedBox(
-            width: 112,
-            child: Text(eventTime(event), style: const TextStyle(color: _muted)),
-          ),
-          Expanded(child: Text(event.title)),
-        ],
-      ),
     );
   }
 }

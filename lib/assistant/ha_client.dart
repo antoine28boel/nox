@@ -27,8 +27,12 @@ class HaClient {
     return base.replace(path: '${base.path}$path', queryParameters: query);
   }
 
-  Future<Object?> _request(String method, Uri uri,
-      {Object? body, Duration timeout = const Duration(seconds: 20)}) async {
+  Future<Object?> _request(
+    String method,
+    Uri uri, {
+    Object? body,
+    Duration timeout = const Duration(seconds: 20),
+  }) async {
     final client = HttpClient()
       ..connectionTimeout = const Duration(seconds: 10)
       ..userAgent = 'nox';
@@ -86,10 +90,7 @@ class HaClient {
   /// The events of every calendar from [start] to [end], sorted.
   Future<List<AgendaEvent>> fetchEvents(DateTime start, DateTime end) async {
     final found = discoverEntities(await states());
-    final range = {
-      'start': start.toUtc().toIso8601String(),
-      'end': end.toUtc().toIso8601String(),
-    };
+    final range = {'start': start.toUtc().toIso8601String(), 'end': end.toUtc().toIso8601String()};
     final events = <AgendaEvent>[];
     for (final calendar in found.calendars.entries) {
       try {
@@ -113,7 +114,9 @@ class HaClient {
           _uri('/api/services/todo/get_items', const {'return_response': ''}),
           body: {'entity_id': entry.key},
         );
-        lists.add(TodoList(id: entry.key, name: entry.value, items: parseTodoList(json, entry.key)));
+        lists.add(
+          TodoList(id: entry.key, name: entry.value, items: parseTodoList(json, entry.key)),
+        );
       } on HaException {
         lists.add(TodoList(id: entry.key, name: entry.value));
       }

@@ -2,15 +2,17 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import 'brief.dart';
 import 'ha_client.dart';
 import 'home.dart';
 import 'panel_style.dart';
 import 'today.dart';
+import 'vikunja.dart';
+import 'vikunja_client.dart';
 
 /// Shared behavior of the live tabs: loads from Home Assistant when shown,
 /// again every [every] while visible, and after each action.
 mixin _LiveTab<T extends StatefulWidget, D> on State<T> {
-  HaClient get client;
   Duration? get every => null;
 
   D? data;
@@ -47,13 +49,18 @@ mixin _LiveTab<T extends StatefulWidget, D> on State<T> {
       });
     } on HaException catch (e) {
       if (mounted) setState(() => error = e.message);
+    } on VikunjaException catch (e) {
+      if (mounted) setState(() => error = e.message);
     } catch (_) {
-      if (mounted) setState(() => error = 'Home Assistant injoignable');
+      if (mounted) setState(() => error = unreachable);
     } finally {
       loading = false;
       if (mounted) setState(() {});
     }
   }
+
+  /// Shown when the server does not answer.
+  String get unreachable => 'Home Assistant injoignable';
 
   /// Runs a service call, then reloads.
   Future<void> act(Future<void> Function() action) async {
@@ -100,7 +107,6 @@ class MusicTab extends StatefulWidget {
 }
 
 class _MusicTabState extends State<MusicTab> with _LiveTab<MusicTab, List<MediaPlayer>> {
-  @override
   HaClient get client => widget.client;
   @override
   Duration get every => const Duration(seconds: 3);
@@ -116,10 +122,12 @@ class _MusicTabState extends State<MusicTab> with _LiveTab<MusicTab, List<MediaP
 
   @override
   Widget build(BuildContext context) {
-    return frame((players) => [
-          if (players.isEmpty) const PanelNote('Aucun lecteur trouvé dans Home Assistant.'),
-          for (final p in players) _player(p),
-        ]);
+    return frame(
+      (players) => [
+        if (players.isEmpty) const PanelNote('Aucun lecteur trouvé dans Home Assistant.'),
+        for (final p in players) _player(p),
+      ],
+    );
   }
 
   Widget _player(MediaPlayer p) {
@@ -152,15 +160,19 @@ class _MusicTabState extends State<MusicTab> with _LiveTab<MusicTab, List<MediaP
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(p.active ? (p.title ?? 'Lecture en cours') : _idle(p.state),
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(fontWeight: FontWeight.w600)),
+                  Text(
+                    p.active ? (p.title ?? 'Lecture en cours') : _idle(p.state),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontWeight: FontWeight.w600),
+                  ),
                   if (p.active && p.artist != null)
-                    Text(p.artist!,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(color: panelMuted)),
+                    Text(
+                      p.artist!,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(color: panelMuted),
+                    ),
                 ],
               ),
             ),
@@ -196,7 +208,9 @@ class _MusicTabState extends State<MusicTab> with _LiveTab<MusicTab, List<MediaP
                   value: volume.clamp(0.0, 1.0),
                   onChanged: (v) => setState(() => _dragging[p.id] = v),
                   onChangeEnd: (v) async {
-                    await _call(p, 'volume_set', {'volume_level': double.parse(v.toStringAsFixed(2))});
+                    await _call(p, 'volume_set', {
+                      'volume_level': double.parse(v.toStringAsFixed(2)),
+                    });
                     if (mounted) setState(() => _dragging.remove(p.id));
                   },
                 ),
@@ -209,7 +223,12 @@ class _MusicTabState extends State<MusicTab> with _LiveTab<MusicTab, List<MediaP
   }
 
   String _idle(String state) =>
-      const {'off': 'Éteint', 'idle': 'En attente', 'on': 'Allumé', 'standby': 'En veille'}[state] ??
+      const {
+        'off': 'Éteint',
+        'idle': 'En attente',
+        'on': 'Allumé',
+        'standby': 'En veille',
+      }[state] ??
       state;
 }
 
@@ -225,7 +244,6 @@ class HomeTab extends StatefulWidget {
 }
 
 class _HomeTabState extends State<HomeTab> with _LiveTab<HomeTab, Map<String, List<HomeDevice>>> {
-  @override
   HaClient get client => widget.client;
   @override
   Duration get every => const Duration(seconds: 10);
@@ -238,29 +256,31 @@ class _HomeTabState extends State<HomeTab> with _LiveTab<HomeTab, Map<String, Li
 
   @override
   Widget build(BuildContext context) {
-    return frame((groups) => [
-          if (groups.isEmpty) const PanelNote('Aucun appareil trouvé dans Home Assistant.'),
-          for (final entry in groups.entries)
-            PanelSection(
-              title: homeDomainLabels[entry.key] ?? entry.key,
-              children: [
-                if (entry.key == 'scene' || entry.key == 'script')
-                  Wrap(
-                    spacing: 6,
-                    runSpacing: 6,
-                    children: [
-                      for (final d in entry.value)
-                        ActionChip(
-                          label: Text(d.name),
-                          onPressed: d.available ? () => _call(d, 'turn_on') : null,
-                        ),
-                    ],
-                  )
-                else
-                  for (final d in entry.value) _device(d),
-              ],
-            ),
-        ]);
+    return frame(
+      (groups) => [
+        if (groups.isEmpty) const PanelNote('Aucun appareil trouvé dans Home Assistant.'),
+        for (final entry in groups.entries)
+          PanelSection(
+            title: homeDomainLabels[entry.key] ?? entry.key,
+            children: [
+              if (entry.key == 'scene' || entry.key == 'script')
+                Wrap(
+                  spacing: 6,
+                  runSpacing: 6,
+                  children: [
+                    for (final d in entry.value)
+                      ActionChip(
+                        label: Text(d.name),
+                        onPressed: d.available ? () => _call(d, 'turn_on') : null,
+                      ),
+                  ],
+                )
+              else
+                for (final d in entry.value) _device(d),
+            ],
+          ),
+      ],
+    );
   }
 
   Widget _device(HomeDevice d) {
@@ -272,36 +292,46 @@ class _HomeTabState extends State<HomeTab> with _LiveTab<HomeTab, Map<String, Li
         onChanged: d.available ? (v) => _call(d, v ? 'turn_on' : 'turn_off') : null,
       );
     } else if (d.domain == 'cover') {
-      control = Row(mainAxisSize: MainAxisSize.min, children: [
-        IconButton(
-          tooltip: 'Ouvrir',
-          onPressed: d.available ? () => _call(d, 'open_cover') : null,
-          icon: const Icon(Icons.keyboard_arrow_up_rounded),
-        ),
-        IconButton(
-          tooltip: 'Stop',
-          onPressed: d.available ? () => _call(d, 'stop_cover') : null,
-          icon: const Icon(Icons.stop_rounded, size: 18),
-        ),
-        IconButton(
-          tooltip: 'Fermer',
-          onPressed: d.available ? () => _call(d, 'close_cover') : null,
-          icon: const Icon(Icons.keyboard_arrow_down_rounded),
-        ),
-      ]);
+      control = Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          IconButton(
+            tooltip: 'Ouvrir',
+            onPressed: d.available ? () => _call(d, 'open_cover') : null,
+            icon: const Icon(Icons.keyboard_arrow_up_rounded),
+          ),
+          IconButton(
+            tooltip: 'Stop',
+            onPressed: d.available ? () => _call(d, 'stop_cover') : null,
+            icon: const Icon(Icons.stop_rounded, size: 18),
+          ),
+          IconButton(
+            tooltip: 'Fermer',
+            onPressed: d.available ? () => _call(d, 'close_cover') : null,
+            icon: const Icon(Icons.keyboard_arrow_down_rounded),
+          ),
+        ],
+      );
     } else if (d.domain == 'climate' && d.target != null) {
-      control = Row(mainAxisSize: MainAxisSize.min, children: [
-        IconButton(
-          tooltip: '−0,5 °C',
-          onPressed: d.available ? () => _call(d, 'set_temperature', {'temperature': d.target! - 0.5}) : null,
-          icon: const Icon(Icons.remove_rounded),
-        ),
-        IconButton(
-          tooltip: '+0,5 °C',
-          onPressed: d.available ? () => _call(d, 'set_temperature', {'temperature': d.target! + 0.5}) : null,
-          icon: const Icon(Icons.add_rounded),
-        ),
-      ]);
+      control = Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          IconButton(
+            tooltip: '−0,5 °C',
+            onPressed: d.available
+                ? () => _call(d, 'set_temperature', {'temperature': d.target! - 0.5})
+                : null,
+            icon: const Icon(Icons.remove_rounded),
+          ),
+          IconButton(
+            tooltip: '+0,5 °C',
+            onPressed: d.available
+                ? () => _call(d, 'set_temperature', {'temperature': d.target! + 0.5})
+                : null,
+            icon: const Icon(Icons.add_rounded),
+          ),
+        ],
+      );
     } else if (d.domain == 'lock') {
       control = TextButton(
         onPressed: d.available ? () => _call(d, d.state == 'locked' ? 'unlock' : 'lock') : null,
@@ -332,10 +362,13 @@ class _HomeTabState extends State<HomeTab> with _LiveTab<HomeTab, Map<String, Li
 // ---------------------------------------------------------------- Agenda
 
 class AgendaTab extends StatefulWidget {
-  const AgendaTab({super.key, required this.client, required this.now});
+  const AgendaTab({super.key, required this.client, required this.now, this.brief});
 
   final HaClient client;
   final DateTime now;
+
+  /// Today's brief, shown above the agenda.
+  final Brief? brief;
 
   @override
   State<AgendaTab> createState() => _AgendaTabState();
@@ -345,7 +378,6 @@ class AgendaTab extends StatefulWidget {
 const kAgendaDays = 7;
 
 class _AgendaTabState extends State<AgendaTab> with _LiveTab<AgendaTab, List<AgendaEvent>> {
-  @override
   HaClient get client => widget.client;
 
   DateTime get _start => DateTime(widget.now.year, widget.now.month, widget.now.day);
@@ -359,6 +391,21 @@ class _AgendaTabState extends State<AgendaTab> with _LiveTab<AgendaTab, List<Age
     return frame((events) {
       final days = groupByDay(events, _start, kAgendaDays);
       return [
+        if (widget.brief case final brief?)
+          PanelSection(
+            title: 'Brief',
+            children: [
+              Text(brief.text, style: const TextStyle(height: 1.4)),
+              if (brief.byAi)
+                const Padding(
+                  padding: EdgeInsets.only(top: 6),
+                  child: Text(
+                    'Rédigé par l\'IA de Home Assistant',
+                    style: TextStyle(color: panelMuted, fontSize: 11),
+                  ),
+                ),
+            ],
+          ),
         if (days.isEmpty) PanelNote('Rien de prévu ces $kAgendaDays prochains jours.'),
         for (final day in days.entries)
           PanelSection(
@@ -404,7 +451,6 @@ class TasksTab extends StatefulWidget {
 }
 
 class _TasksTabState extends State<TasksTab> with _LiveTab<TasksTab, List<TodoList>> {
-  @override
   HaClient get client => widget.client;
 
   final _inputs = <String, TextEditingController>{};
@@ -429,31 +475,38 @@ class _TasksTabState extends State<TasksTab> with _LiveTab<TasksTab, List<TodoLi
     await act(() => client.callService('todo', 'add_item', {'entity_id': list.id, 'item': text}));
   }
 
-  Future<void> _check(TodoList list, TodoItem item, bool done) => act(() => client.callService(
-        'todo',
-        'update_item',
-        {'entity_id': list.id, 'item': item.uid, 'status': done ? 'completed' : 'needs_action'},
-      ));
+  Future<void> _check(TodoList list, TodoItem item, bool done) => act(
+    () => client.callService('todo', 'update_item', {
+      'entity_id': list.id,
+      'item': item.uid,
+      'status': done ? 'completed' : 'needs_action',
+    }),
+  );
 
   @override
   Widget build(BuildContext context) {
-    return frame((lists) => [
-          if (lists.isEmpty) const PanelNote('Aucune liste de tâches dans Home Assistant.'),
-          if (lists.isNotEmpty)
-            Align(
-              alignment: Alignment.centerRight,
-              child: TextButton(
-                onPressed: () => setState(() => _showDone = !_showDone),
-                child: Text(_showDone ? 'Masquer les terminées' : 'Afficher les terminées'),
-              ),
+    return frame(
+      (lists) => [
+        if (lists.isEmpty) const PanelNote('Aucune liste de tâches dans Home Assistant.'),
+        if (lists.isNotEmpty)
+          Align(
+            alignment: Alignment.centerRight,
+            child: TextButton(
+              onPressed: () => setState(() => _showDone = !_showDone),
+              child: Text(_showDone ? 'Masquer les terminées' : 'Afficher les terminées'),
             ),
-          for (final list in lists) _list(list),
-        ]);
+          ),
+        for (final list in lists) _list(list),
+      ],
+    );
   }
 
   Widget _list(TodoList list) {
     final input = _inputs[list.id] ??= TextEditingController();
-    final items = [for (final i in list.items) if (_showDone || !i.done) i];
+    final items = [
+      for (final i in list.items)
+        if (_showDone || !i.done) i,
+    ];
     return PanelSection(
       title: list.name,
       children: [
@@ -490,6 +543,130 @@ class _TasksTabState extends State<TasksTab> with _LiveTab<TasksTab, List<TodoLi
           ),
         ),
       ],
+    );
+  }
+}
+
+// ---------------------------------------------------------------- Suivi
+
+class TrackingTab extends StatefulWidget {
+  const TrackingTab({super.key, required this.client});
+
+  final VikunjaClient client;
+
+  @override
+  State<TrackingTab> createState() => _TrackingTabState();
+}
+
+class _TrackingTabState extends State<TrackingTab> with _LiveTab<TrackingTab, Tracking> {
+  @override
+  Duration get every => const Duration(minutes: 1);
+
+  @override
+  String get unreachable => 'Vikunja injoignable';
+
+  @override
+  Future<Tracking> load() => widget.client.fetchTracking();
+
+  @override
+  Widget build(BuildContext context) {
+    return frame(
+      (t) => [
+        PanelSection(
+          title: 'En cours',
+          children: [
+            if (t.inProgress.isEmpty) const PanelNote('Aucune tâche en cours.'),
+            for (final task in t.inProgress) _task(task, t, showProject: true),
+          ],
+        ),
+        if (t.claude case final claude?)
+          PanelSection(
+            title: 'Tâches de Claude',
+            children: [
+              if (claude.isEmpty) const PanelNote('Rien en attente.'),
+              for (final task in claude) _task(task, t),
+            ],
+          ),
+        PanelSection(
+          title: 'Projets',
+          children: [
+            if (t.projects.isEmpty) const PanelNote('Aucun projet dans Vikunja.'),
+            for (final p in t.projects) _project(p),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _task(VkTask task, Tracking t, {bool showProject = false}) {
+    final started = t.inProgressIds.contains(task.id);
+    final due = task.due;
+    final late = due != null && due.isBefore(DateTime.now());
+    final details = [
+      if (showProject) ?t.projectNames[task.projectId],
+      if (due != null) 'échéance ${frenchDate(due)}',
+    ].join(' · ');
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 3),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.only(top: 2, right: 8),
+            child: Icon(
+              started ? Icons.play_circle_outline_rounded : Icons.radio_button_unchecked,
+              size: 16,
+              color: started ? panelAccent : panelMuted,
+            ),
+          ),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(task.title),
+                if (details.isNotEmpty)
+                  Text(
+                    details,
+                    style: TextStyle(color: late ? panelError : panelMuted, fontSize: 12),
+                  ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _project(ProjectProgress p) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(child: Text(p.path, maxLines: 1, overflow: TextOverflow.ellipsis)),
+              Text(
+                [
+                  if (p.inProgress > 0) '${p.inProgress} en cours',
+                  '${p.done}/${p.total}',
+                ].join(' · '),
+                style: const TextStyle(color: panelMuted, fontSize: 12),
+              ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(3),
+            child: LinearProgressIndicator(
+              value: p.ratio,
+              minHeight: 5,
+              color: panelAccent,
+              backgroundColor: panelBackground,
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

@@ -30,12 +30,15 @@ class PanelSection extends StatelessWidget {
             child: Row(
               children: [
                 Expanded(
-                  child: Text(title.toUpperCase(),
-                      style: const TextStyle(
-                          color: panelAccent,
-                          fontSize: 11,
-                          fontWeight: FontWeight.w700,
-                          letterSpacing: 1)),
+                  child: Text(
+                    title.toUpperCase(),
+                    style: const TextStyle(
+                      color: panelAccent,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: 1,
+                    ),
+                  ),
                 ),
                 ?trailing,
               ],

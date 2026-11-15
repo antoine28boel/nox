@@ -23,12 +23,12 @@ class AgendaEvent {
   final String calendar;
 
   Map<String, Object?> toJson() => {
-        'title': title,
-        'start': start.toUtc().toIso8601String(),
-        'end': end.toUtc().toIso8601String(),
-        'allDay': allDay,
-        'calendar': calendar,
-      };
+    'title': title,
+    'start': start.toUtc().toIso8601String(),
+    'end': end.toUtc().toIso8601String(),
+    'allDay': allDay,
+    'calendar': calendar,
+  };
 
   static AgendaEvent? fromJson(Object? json) {
     if (json is! Map) return null;
@@ -58,8 +58,11 @@ class WeatherNow {
   final double? temperature;
   final String unit;
 
-  Map<String, Object?> toJson() =>
-      {'condition': condition, 'temperature': temperature, 'unit': unit};
+  Map<String, Object?> toJson() => {
+    'condition': condition,
+    'temperature': temperature,
+    'unit': unit,
+  };
 
   static WeatherNow? fromJson(Object? json) {
     if (json is! Map) return null;
@@ -90,11 +93,11 @@ class TodayData {
   final List<String> tasks;
 
   Map<String, Object?> toJson() => {
-        'fetchedAt': fetchedAt.toUtc().toIso8601String(),
-        'weather': weather?.toJson(),
-        'events': [for (final e in events) e.toJson()],
-        'tasks': tasks,
-      };
+    'fetchedAt': fetchedAt.toUtc().toIso8601String(),
+    'weather': weather?.toJson(),
+    'events': [for (final e in events) e.toJson()],
+    'tasks': tasks,
+  };
 
   static TodayData? fromJson(Object? json) {
     if (json is! Map) return null;
@@ -109,8 +112,7 @@ class TodayData {
       weather: WeatherNow.fromJson(json['weather']),
       events: [
         if (events is List)
-          for (final e in events)
-            ?AgendaEvent.fromJson(e),
+          for (final e in events) ?AgendaEvent.fromJson(e),
       ],
       tasks: [
         if (tasks is List)
@@ -184,13 +186,15 @@ List<AgendaEvent> parseCalendarEvents(Object? json, {String calendar = ''}) {
     if (start == null) continue;
     final rawStart = e['start'];
     final summary = e['summary'];
-    events.add(AgendaEvent(
-      title: summary is String && summary.trim().isNotEmpty ? summary.trim() : '(sans titre)',
-      start: start,
-      end: _when(e['end']) ?? start,
-      allDay: rawStart is Map && rawStart['dateTime'] == null,
-      calendar: calendar,
-    ));
+    events.add(
+      AgendaEvent(
+        title: summary is String && summary.trim().isNotEmpty ? summary.trim() : '(sans titre)',
+        start: start,
+        end: _when(e['end']) ?? start,
+        allDay: rawStart is Map && rawStart['dateTime'] == null,
+        calendar: calendar,
+      ),
+    );
   }
   return events;
 }
@@ -283,11 +287,11 @@ String? normalizeHaUrl(String input) {
   if (uri.scheme != 'https' && uri.scheme != 'http') return null;
   final path = uri.path.replaceAll(RegExp(r'/+$'), '');
   return Uri(
-          scheme: uri.scheme,
-          host: uri.host,
-          port: uri.hasPort ? uri.port : null,
-          path: path)
-      .toString();
+    scheme: uri.scheme,
+    host: uri.host,
+    port: uri.hasPort ? uri.port : null,
+    path: path,
+  ).toString();
 }
 
 /// Events grouped by day (local midnight), for [days] days from [start]
@@ -299,7 +303,9 @@ Map<DateTime, List<AgendaEvent>> groupByDay(List<AgendaEvent> events, DateTime s
   for (final e in events) {
     if (!e.end.isAfter(start) && !e.start.isAtSameMomentAs(start)) continue;
     if (!e.start.isBefore(end)) continue;
-    final day = e.start.isBefore(start) ? start : DateTime(e.start.year, e.start.month, e.start.day);
+    final day = e.start.isBefore(start)
+        ? start
+        : DateTime(e.start.year, e.start.month, e.start.day);
     (byDay[day] ??= []).add(e);
   }
   final keys = byDay.keys.toList()..sort();
