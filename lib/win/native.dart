@@ -54,66 +54,138 @@ final class BitmapInfoHeader extends Struct {
   external int clrImportant;
 }
 
-final _findWindowEx = _user32.lookupFunction<
-    IntPtr Function(IntPtr, IntPtr, Pointer<Utf16>, Pointer<Utf16>),
-    int Function(int, int, Pointer<Utf16>, Pointer<Utf16>)>('FindWindowExW');
+final _findWindowEx = _user32
+    .lookupFunction<
+      IntPtr Function(IntPtr, IntPtr, Pointer<Utf16>, Pointer<Utf16>),
+      int Function(int, int, Pointer<Utf16>, Pointer<Utf16>)
+    >('FindWindowExW');
 
-final _sendMessageTimeout = _user32.lookupFunction<
-    IntPtr Function(IntPtr, Uint32, IntPtr, IntPtr, Uint32, Uint32, Pointer<IntPtr>),
-    int Function(int, int, int, int, int, int, Pointer<IntPtr>)>('SendMessageTimeoutW');
+final _sendMessageTimeout = _user32
+    .lookupFunction<
+      IntPtr Function(IntPtr, Uint32, IntPtr, IntPtr, Uint32, Uint32, Pointer<IntPtr>),
+      int Function(int, int, int, int, int, int, Pointer<IntPtr>)
+    >('SendMessageTimeoutW');
 
-final _getWindowThreadProcessId = _user32.lookupFunction<
-    Uint32 Function(IntPtr, Pointer<Uint32>),
-    int Function(int, Pointer<Uint32>)>('GetWindowThreadProcessId');
+final _getWindowThreadProcessId = _user32
+    .lookupFunction<Uint32 Function(IntPtr, Pointer<Uint32>), int Function(int, Pointer<Uint32>)>(
+      'GetWindowThreadProcessId',
+    );
 
-final _clientToScreen = _user32.lookupFunction<Int32 Function(IntPtr, Pointer<NPoint>),
-    int Function(int, Pointer<NPoint>)>('ClientToScreen');
+final _clientToScreen = _user32
+    .lookupFunction<Int32 Function(IntPtr, Pointer<NPoint>), int Function(int, Pointer<NPoint>)>(
+      'ClientToScreen',
+    );
 
-final _createWindowEx = _user32.lookupFunction<
-    IntPtr Function(Uint32, Pointer<Utf16>, Pointer<Utf16>, Uint32, Int32, Int32, Int32,
-        Int32, IntPtr, IntPtr, IntPtr, Pointer<Void>),
-    int Function(int, Pointer<Utf16>, Pointer<Utf16>, int, int, int, int, int, int, int,
-        int, Pointer<Void>)>('CreateWindowExW');
+final _createWindowEx = _user32
+    .lookupFunction<
+      IntPtr Function(
+        Uint32,
+        Pointer<Utf16>,
+        Pointer<Utf16>,
+        Uint32,
+        Int32,
+        Int32,
+        Int32,
+        Int32,
+        IntPtr,
+        IntPtr,
+        IntPtr,
+        Pointer<Void>,
+      ),
+      int Function(
+        int,
+        Pointer<Utf16>,
+        Pointer<Utf16>,
+        int,
+        int,
+        int,
+        int,
+        int,
+        int,
+        int,
+        int,
+        Pointer<Void>,
+      )
+    >('CreateWindowExW');
 
-final _showWindow = _user32
-    .lookupFunction<Int32 Function(IntPtr, Int32), int Function(int, int)>('ShowWindow');
+final _showWindow = _user32.lookupFunction<Int32 Function(IntPtr, Int32), int Function(int, int)>(
+  'ShowWindow',
+);
 
-final _updateLayeredWindow = _user32.lookupFunction<
-    Int32 Function(IntPtr, IntPtr, Pointer<NPoint>, Pointer<NPoint>, IntPtr,
-        Pointer<NPoint>, Uint32, Pointer<BlendFunction>, Uint32),
-    int Function(int, int, Pointer<NPoint>, Pointer<NPoint>, int, Pointer<NPoint>, int,
-        Pointer<BlendFunction>, int)>('UpdateLayeredWindow');
+final _updateLayeredWindow = _user32
+    .lookupFunction<
+      Int32 Function(
+        IntPtr,
+        IntPtr,
+        Pointer<NPoint>,
+        Pointer<NPoint>,
+        IntPtr,
+        Pointer<NPoint>,
+        Uint32,
+        Pointer<BlendFunction>,
+        Uint32,
+      ),
+      int Function(
+        int,
+        int,
+        Pointer<NPoint>,
+        Pointer<NPoint>,
+        int,
+        Pointer<NPoint>,
+        int,
+        Pointer<BlendFunction>,
+        int,
+      )
+    >('UpdateLayeredWindow');
 
-final _openProcess = _kernel32.lookupFunction<IntPtr Function(Uint32, Int32, Uint32),
-    int Function(int, int, int)>('OpenProcess');
+final _openProcess = _kernel32
+    .lookupFunction<IntPtr Function(Uint32, Int32, Uint32), int Function(int, int, int)>(
+      'OpenProcess',
+    );
 
-final _closeHandle =
-    _kernel32.lookupFunction<Int32 Function(IntPtr), int Function(int)>('CloseHandle');
+final _closeHandle = _kernel32.lookupFunction<Int32 Function(IntPtr), int Function(int)>(
+  'CloseHandle',
+);
 
-final _virtualAllocEx = _kernel32.lookupFunction<
-    Pointer<Void> Function(IntPtr, Pointer<Void>, IntPtr, Uint32, Uint32),
-    Pointer<Void> Function(int, Pointer<Void>, int, int, int)>('VirtualAllocEx');
+final _virtualAllocEx = _kernel32
+    .lookupFunction<
+      Pointer<Void> Function(IntPtr, Pointer<Void>, IntPtr, Uint32, Uint32),
+      Pointer<Void> Function(int, Pointer<Void>, int, int, int)
+    >('VirtualAllocEx');
 
-final _virtualFreeEx = _kernel32.lookupFunction<
-    Int32 Function(IntPtr, Pointer<Void>, IntPtr, Uint32),
-    int Function(int, Pointer<Void>, int, int)>('VirtualFreeEx');
+final _virtualFreeEx = _kernel32
+    .lookupFunction<
+      Int32 Function(IntPtr, Pointer<Void>, IntPtr, Uint32),
+      int Function(int, Pointer<Void>, int, int)
+    >('VirtualFreeEx');
 
-final _readProcessMemory = _kernel32.lookupFunction<
-    Int32 Function(IntPtr, Pointer<Void>, Pointer<Void>, IntPtr, Pointer<IntPtr>),
-    int Function(int, Pointer<Void>, Pointer<Void>, int, Pointer<IntPtr>)>(
-    'ReadProcessMemory');
+final _readProcessMemory = _kernel32
+    .lookupFunction<
+      Int32 Function(IntPtr, Pointer<Void>, Pointer<Void>, IntPtr, Pointer<IntPtr>),
+      int Function(int, Pointer<Void>, Pointer<Void>, int, Pointer<IntPtr>)
+    >('ReadProcessMemory');
 
-final _getModuleHandle = _kernel32.lookupFunction<IntPtr Function(Pointer<Utf16>),
-    int Function(Pointer<Utf16>)>('GetModuleHandleW');
+final _getModuleHandle = _kernel32
+    .lookupFunction<IntPtr Function(Pointer<Utf16>), int Function(Pointer<Utf16>)>(
+      'GetModuleHandleW',
+    );
 
-final _createCompatibleDC =
-    _gdi32.lookupFunction<IntPtr Function(IntPtr), int Function(int)>('CreateCompatibleDC');
+final _createCompatibleDC = _gdi32.lookupFunction<IntPtr Function(IntPtr), int Function(int)>(
+  'CreateCompatibleDC',
+);
 
-final _createDIBSection = _gdi32.lookupFunction<
-    IntPtr Function(IntPtr, Pointer<BitmapInfoHeader>, Uint32, Pointer<Pointer<Void>>,
-        IntPtr, Uint32),
-    int Function(int, Pointer<BitmapInfoHeader>, int, Pointer<Pointer<Void>>, int,
-        int)>('CreateDIBSection');
+final _createDIBSection = _gdi32
+    .lookupFunction<
+      IntPtr Function(
+        IntPtr,
+        Pointer<BitmapInfoHeader>,
+        Uint32,
+        Pointer<Pointer<Void>>,
+        IntPtr,
+        Uint32,
+      ),
+      int Function(int, Pointer<BitmapInfoHeader>, int, Pointer<Pointer<Void>>, int, int)
+    >('CreateDIBSection');
 
 final _selectObject = _gdi32
     .lookupFunction<IntPtr Function(IntPtr, IntPtr), int Function(int, int)>('SelectObject');
@@ -219,8 +291,20 @@ class FeatherWindow {
     final title = ''.toNativeUtf16();
     // WS_EX_LAYERED | WS_EX_TRANSPARENT | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE
     // | WS_EX_TOPMOST, WS_POPUP
-    hwnd = _createWindowEx(0x00080000 | 0x20 | 0x80 | 0x08000000 | 0x8, cls, title,
-        0x80000000, 0, 0, width, height, 0, 0, _getModuleHandle(nullptr), nullptr);
+    hwnd = _createWindowEx(
+      0x00080000 | 0x20 | 0x80 | 0x08000000 | 0x8,
+      cls,
+      title,
+      0x80000000,
+      0,
+      0,
+      width,
+      height,
+      0,
+      0,
+      _getModuleHandle(nullptr),
+      nullptr,
+    );
     calloc.free(cls);
     calloc.free(title);
     if (hwnd == 0) return;
@@ -278,7 +362,8 @@ class FeatherWindow {
       ..x = x
       ..y = y;
     _blend.ref
-      ..op = 0 // AC_SRC_OVER
+      ..op =
+          0 // AC_SRC_OVER
       ..flags = 0
       ..alpha = alpha
       ..format = 1; // AC_SRC_ALPHA

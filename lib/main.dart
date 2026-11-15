@@ -12,6 +12,7 @@ import 'package:window_manager/window_manager.dart';
 import 'assistant/brief.dart';
 import 'assistant/ha_client.dart';
 import 'assistant/today.dart';
+import 'assistant/spotify_client.dart';
 import 'assistant/today_panel.dart';
 import 'assistant/vikunja_client.dart';
 import 'nox/brain.dart';
@@ -242,6 +243,42 @@ class _NoxAppState extends State<NoxApp> with TrayListener {
     return null;
   }
 
+  /// Kept while Nox runs, so its access token is reused.
+  late SpotifyClient? _spotify = _makeSpotify();
+
+  SpotifyClient? _makeSpotify() {
+    final id = widget.prefs.getString('spotify_client_id') ?? '';
+    final refresh = widget.prefs.getString('spotify_refresh') ?? '';
+    if (id.isEmpty || refresh.isEmpty) return null;
+    return SpotifyClient(
+      id,
+      refresh,
+      onNewRefreshToken: (token) => widget.prefs.setString('spotify_refresh', token),
+    );
+  }
+
+  Future<String?> _spotifyLogin(String clientId) async {
+    if (clientId.isEmpty) return 'Il manque le Client ID.';
+    try {
+      final refresh = await SpotifyClient.login(clientId);
+      await widget.prefs.setString('spotify_client_id', clientId);
+      await widget.prefs.setString('spotify_refresh', refresh);
+    } on SpotifyException catch (e) {
+      return e.message;
+    } catch (_) {
+      return 'Spotify injoignable.';
+    }
+    if (mounted) setState(() => _spotify = _makeSpotify());
+    // The browser took the focus: the panel comes back to the front.
+    if (_panelOpen) widget.desktop.bringToFront();
+    return null;
+  }
+
+  Future<void> _spotifyLogout() async {
+    await widget.prefs.remove('spotify_refresh');
+    if (mounted) setState(() => _spotify = null);
+  }
+
   void _openPanel() {
     if (_panelOpen) return;
     widget.desktop.enterPanel(widget.brain.pos, kPanelSize);
@@ -358,49 +395,65 @@ class _NoxAppState extends State<NoxApp> with TrayListener {
   Future<void> _refreshMenu() async {
     final mode = widget.brain.mode;
     final update = _update;
-    await trayManager.setContextMenu(Menu(items: [
-      MenuItem(
-          key: 'title',
-          label: kNoxBuild > 0 ? 'Nox — version $kNoxBuild' : 'Nox — version locale',
-          disabled: true),
-      MenuItem.separator(),
-      if (update != null) ...[
-        MenuItem(
-            key: 'update_title',
-            label: _installing
-                ? 'Mise à jour en cours…'
-                : 'Nox apporte une mise à jour (version ${update.build})',
-            disabled: true),
-        if (_updateError != null && !_installing)
-          MenuItem(key: 'update_error', label: _updateError, disabled: true),
-        if (!_installing) MenuItem(key: 'update_accept', label: 'Accepter'),
-        if (!_installing) MenuItem(key: 'update_decline', label: 'Refuser'),
-        MenuItem.separator(),
-      ],
-      MenuItem.checkbox(key: 'sage', label: 'Mode sage', checked: mode == NoxMode.sage),
-      MenuItem.checkbox(
-          key: 'espiegle', label: 'Mode espiègle', checked: mode == NoxMode.espiegle),
-      MenuItem.separator(),
-      MenuItem(key: 'pranks', label: 'Bêtises (mode espiègle)', disabled: true),
-      for (final prank in NoxPrank.values)
-        MenuItem.checkbox(
-            key: 'prank_${prank.name}',
-            label: _prankLabels[prank]!,
-            checked: widget.brain.pranks.contains(prank)),
-      MenuItem.separator(),
-      MenuItem.checkbox(
-          key: 'work', label: 'Nichoir (mode travail)', checked: widget.brain.workMode),
-      MenuItem(
-          key: 'today',
-          label: _todayBrief?.read == false ? "Aujourd'hui (brief à lire)" : "Aujourd'hui"),
-      MenuItem(key: 'recall', label: 'Rappeler Nox'),
-      MenuItem.checkbox(
-          key: 'startup', label: 'Lancer au démarrage de Windows', checked: _startup),
-      if (update == null)
-        MenuItem(key: 'update_check', label: 'Rechercher une mise à jour'),
-      MenuItem.separator(),
-      MenuItem(key: 'quit', label: 'Quitter'),
-    ]));
+    await trayManager.setContextMenu(
+      Menu(
+        items: [
+          MenuItem(
+            key: 'title',
+            label: kNoxBuild > 0 ? 'Nox — version $kNoxBuild' : 'Nox — version locale',
+            disabled: true,
+          ),
+          MenuItem.separator(),
+          if (update != null) ...[
+            MenuItem(
+              key: 'update_title',
+              label: _installing
+                  ? 'Mise à jour en cours…'
+                  : 'Nox apporte une mise à jour (version ${update.build})',
+              disabled: true,
+            ),
+            if (_updateError != null && !_installing)
+              MenuItem(key: 'update_error', label: _updateError, disabled: true),
+            if (!_installing) MenuItem(key: 'update_accept', label: 'Accepter'),
+            if (!_installing) MenuItem(key: 'update_decline', label: 'Refuser'),
+            MenuItem.separator(),
+          ],
+          MenuItem.checkbox(key: 'sage', label: 'Mode sage', checked: mode == NoxMode.sage),
+          MenuItem.checkbox(
+            key: 'espiegle',
+            label: 'Mode espiègle',
+            checked: mode == NoxMode.espiegle,
+          ),
+          MenuItem.separator(),
+          MenuItem(key: 'pranks', label: 'Bêtises (mode espiègle)', disabled: true),
+          for (final prank in NoxPrank.values)
+            MenuItem.checkbox(
+              key: 'prank_${prank.name}',
+              label: _prankLabels[prank]!,
+              checked: widget.brain.pranks.contains(prank),
+            ),
+          MenuItem.separator(),
+          MenuItem.checkbox(
+            key: 'work',
+            label: 'Nichoir (mode travail)',
+            checked: widget.brain.workMode,
+          ),
+          MenuItem(
+            key: 'today',
+            label: _todayBrief?.read == false ? "Aujourd'hui (brief à lire)" : "Aujourd'hui",
+          ),
+          MenuItem(key: 'recall', label: 'Rappeler Nox'),
+          MenuItem.checkbox(
+            key: 'startup',
+            label: 'Lancer au démarrage de Windows',
+            checked: _startup,
+          ),
+          if (update == null) MenuItem(key: 'update_check', label: 'Rechercher une mise à jour'),
+          MenuItem.separator(),
+          MenuItem(key: 'quit', label: 'Quitter'),
+        ],
+      ),
+    );
   }
 
   static const _prankLabels = {
@@ -508,6 +561,10 @@ class _NoxAppState extends State<NoxApp> with TrayListener {
                     ? VikunjaClient(_vikunjaUrl, _vikunjaToken)
                     : null,
                 onSaveVikunja: _saveVikunjaSettings,
+                spotify: _spotify,
+                spotifyClientId: widget.prefs.getString('spotify_client_id') ?? '',
+                onSpotifyLogin: _spotifyLogin,
+                onSpotifyLogout: _spotifyLogout,
                 onRefresh: _refreshToday,
                 onClose: _closePanel,
                 onSaveSettings: _saveHaSettings,

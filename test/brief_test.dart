@@ -21,25 +21,29 @@ void main() {
         weather: const WeatherNow(condition: 'rainy', temperature: 11.6),
         events: [
           AgendaEvent(
-              title: 'Anniversaire de Léa',
-              start: DateTime(2026, 11, 13),
-              end: DateTime(2026, 11, 14),
-              allDay: true),
+            title: 'Anniversaire de Léa',
+            start: DateTime(2026, 11, 13),
+            end: DateTime(2026, 11, 14),
+            allDay: true,
+          ),
           AgendaEvent(
-              title: 'Réunion',
-              start: DateTime(2026, 11, 13, 7),
-              end: DateTime(2026, 11, 13, 8),
-              allDay: false),
+            title: 'Réunion',
+            start: DateTime(2026, 11, 13, 7),
+            end: DateTime(2026, 11, 13, 8),
+            allDay: false,
+          ),
           AgendaEvent(
-              title: 'Dentiste',
-              start: DateTime(2026, 11, 13, 10),
-              end: DateTime(2026, 11, 13, 11),
-              allDay: false),
+            title: 'Dentiste',
+            start: DateTime(2026, 11, 13, 10),
+            end: DateTime(2026, 11, 13, 11),
+            allDay: false,
+          ),
           AgendaEvent(
-              title: 'Sport',
-              start: DateTime(2026, 11, 13, 18),
-              end: DateTime(2026, 11, 13, 19),
-              allDay: false),
+            title: 'Sport',
+            start: DateTime(2026, 11, 13, 18),
+            end: DateTime(2026, 11, 13, 19),
+            allDay: false,
+          ),
         ],
         tasks: const ['Appeler la banque', 'Courses', 'Lessive'],
       );
@@ -52,22 +56,32 @@ void main() {
 
     test('an empty, cold day', () {
       final data = TodayData(
-          fetchedAt: morning,
-          weather: const WeatherNow(condition: 'clear-night', temperature: 1));
-      expect(offlineBrief(data, DateTime(2026, 11, 13, 19)),
-          'Bonsoir ! Rien à l\'agenda. Il fait froid, couvre-toi.');
+        fetchedAt: morning,
+        weather: const WeatherNow(condition: 'clear-night', temperature: 1),
+      );
+      expect(
+        offlineBrief(data, DateTime(2026, 11, 13, 19)),
+        'Bonsoir ! Rien à l\'agenda. Il fait froid, couvre-toi.',
+      );
     });
 
     test('only all-day events', () {
-      final data = TodayData(fetchedAt: morning, events: [
-        AgendaEvent(
+      final data = TodayData(
+        fetchedAt: morning,
+        events: [
+          AgendaEvent(
             title: 'PMC',
             start: DateTime(2026, 11, 13),
             end: DateTime(2026, 11, 14),
-            allDay: true),
-      ], tasks: const ['maïs']);
-      expect(offlineBrief(data, DateTime(2026, 11, 13, 20)),
-          'Bonsoir ! Pas de rendez-vous à heure fixe. Une tâche t\'attend.');
+            allDay: true,
+          ),
+        ],
+        tasks: const ['maïs'],
+      );
+      expect(
+        offlineBrief(data, DateTime(2026, 11, 13, 20)),
+        'Bonsoir ! Pas de rendez-vous à heure fixe. Une tâche t\'attend.',
+      );
     });
   });
 
@@ -76,11 +90,12 @@ void main() {
       fetchedAt: morning,
       events: [
         AgendaEvent(
-            title: 'Dentiste',
-            start: DateTime(2026, 11, 13, 10),
-            end: DateTime(2026, 11, 13, 11),
-            allDay: false,
-            calendar: 'Perso'),
+          title: 'Dentiste',
+          start: DateTime(2026, 11, 13, 10),
+          end: DateTime(2026, 11, 13, 11),
+          allDay: false,
+          calendar: 'Perso',
+        ),
       ],
       tasks: const ['Courses'],
     );
@@ -98,7 +113,12 @@ void main() {
       }),
       'Bonjour toi !',
     );
-    expect(parseAiTaskText({'service_response': {'data': '   '}}), isNull);
+    expect(
+      parseAiTaskText({
+        'service_response': {'data': '   '},
+      }),
+      isNull,
+    );
     expect(parseAiTaskText({'message': 'nope'}), isNull);
   });
 

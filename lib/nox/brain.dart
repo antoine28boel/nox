@@ -27,13 +27,8 @@ enum NoxPrank {
 /// Where Nox wants to sit: on a window's title bar, or on the taskbar edge.
 class Perch {
   const Perch.window(this.handle, this.offsetX) : spot = null;
-  const Perch.floor(this.offsetX)
-      : handle = null,
-        spot = null;
-  const Perch.spot(Offset at)
-      : handle = null,
-        offsetX = 0,
-        spot = at;
+  const Perch.floor(this.offsetX) : handle = null, spot = null;
+  const Perch.spot(Offset at) : handle = null, offsetX = 0, spot = at;
 
   /// Window handle, or null for the "floor" (top of the taskbar) or a spot.
   final int? handle;
@@ -69,8 +64,8 @@ class NoxGeometry {
 /// so it can be tested without Windows.
 class NoxBrain {
   NoxBrain({math.Random? random, this.mode = NoxMode.sage, Set<NoxPrank>? pranks})
-      : _rng = random ?? math.Random(),
-        pranks = pranks ?? NoxPrank.values.toSet();
+    : _rng = random ?? math.Random(),
+      pranks = pranks ?? NoxPrank.values.toSet();
 
   final math.Random _rng;
   NoxMode mode;
@@ -197,8 +192,12 @@ class NoxBrain {
       bottom: nestBottom,
     );
     final topLeft = pos - NoxGeometry.windowFeet * _px;
-    return Rect.fromLTWH(topLeft.dx + box.left * _px, topLeft.dy + box.top * _px,
-        box.width * _px, box.height * _px);
+    return Rect.fromLTWH(
+      topLeft.dx + box.left * _px,
+      topLeft.dy + box.top * _px,
+      box.width * _px,
+      box.height * _px,
+    );
   }
 
   /// Where Nox's feet are when he sits in his nest: window glued to the top
@@ -257,9 +256,8 @@ class NoxBrain {
     }
     pos = dockPoint(d);
 
-    final near = workMode &&
-        _island >= 1 &&
-        islandRect(retract: 0).inflate(30 * _px).contains(cursor);
+    final near =
+        workMode && _island >= 1 && islandRect(retract: 0).inflate(30 * _px).contains(cursor);
     if (!near) {
       _summoned = false;
       _lineHover = 0;
@@ -274,7 +272,8 @@ class NoxBrain {
     final pull = near && !_summoned && !listening && _nestPress == null;
     _retract = (_retract + (pull ? dt : -dt) * 6).clamp(0.0, 1.0);
     // Opened (eyes and beak) only while the cursor is on the island.
-    _hover = workMode &&
+    _hover =
+        workMode &&
         _island >= 1 &&
         _retract < 0.1 &&
         islandRect().inflate(4 * _px).contains(cursor);
@@ -329,8 +328,7 @@ class NoxBrain {
   void recall(Desktop d, Offset at) {
     sleeping = false;
     final work = d.workArea(at);
-    pos = Offset(at.dx.clamp(work.left + 60 * _px, work.right - 60 * _px),
-        work.top + 60 * _px);
+    pos = Offset(at.dx.clamp(work.left + 60 * _px, work.right - 60 * _px), work.top + 60 * _px);
     vel = Offset.zero;
     perch = null;
     _setState(NoxState.falling);
@@ -342,7 +340,8 @@ class NoxBrain {
   /// blinks or sleeps, to spare the battery.
   double get frameRate {
     if (hidden) return 2;
-    final moving = state == NoxState.flying ||
+    final moving =
+        state == NoxState.flying ||
         state == NoxState.falling ||
         state == NoxState.dragged ||
         hunting ||
@@ -448,8 +447,7 @@ class NoxBrain {
 
     if (p.isFloor) {
       final work = d.workArea(pos);
-      pos = Offset(p.offsetX.clamp(work.left + 40 * _px, work.right - 40 * _px),
-          work.bottom);
+      pos = Offset(p.offsetX.clamp(work.left + 40 * _px, work.right - 40 * _px), work.bottom);
     } else {
       final handle = p.handle!;
       final r = d.windowRect(handle);
@@ -532,9 +530,8 @@ class NoxBrain {
     }
   }
 
-  double _decisionInterval() => mode == NoxMode.sage
-      ? 45 + _rng.nextDouble() * 75
-      : 8 + _rng.nextDouble() * 17;
+  double _decisionInterval() =>
+      mode == NoxMode.sage ? 45 + _rng.nextDouble() * 75 : 8 + _rng.nextDouble() * 17;
 
   void _hopAlong(Desktop d) {
     final handle = perch?.handle;
@@ -644,8 +641,10 @@ class NoxBrain {
     }
     final floor = d.workArea(f).bottom - 6 * _px;
     if (f.dy < floor) {
-      featherPos = Offset(f.dx + math.cos(_featherAge * 3) * 40 * _px * dt,
-          math.min(floor, f.dy + 70 * _px * dt));
+      featherPos = Offset(
+        f.dx + math.cos(_featherAge * 3) * 40 * _px * dt,
+        math.min(floor, f.dy + 70 * _px * dt),
+      );
     }
     featherOpacity = ((life - _featherAge) / 2).clamp(0.0, 1.0);
   }
@@ -683,8 +682,10 @@ class NoxBrain {
       }
     }
     final work = d.workArea(pos);
-    final x = (pos.dx + (_rng.nextDouble() * 2 - 1) * 400 * _px)
-        .clamp(work.left + 60 * _px, work.right - 60 * _px);
+    final x = (pos.dx + (_rng.nextDouble() * 2 - 1) * 400 * _px).clamp(
+      work.left + 60 * _px,
+      work.right - 60 * _px,
+    );
     return Perch.floor(x);
   }
 
@@ -819,7 +820,8 @@ class NoxBrain {
 
   void _updatePetting(double dt, Offset cursor) {
     final moved = (cursor - _lastCursor).distance;
-    final onHead = state == NoxState.perched &&
+    final onHead =
+        state == NoxState.perched &&
         !hidden &&
         (cursor - (pos + NoxGeometry.headCenter * _px)).distance < 45 * _px;
     if (onHead && moved > 0) {
@@ -881,9 +883,7 @@ class NoxBrain {
       ..carrying = carrying
       ..surprised = falling || dragged
       ..eyeOpen = sleeping ? 0 : (_t < _blinkUntil ? 0.05 : 1)
-      ..look = (sleeping || falling)
-          ? Offset.zero
-          : (_pecking ? const Offset(-0.8, 0.7) : _look)
+      ..look = (sleeping || falling) ? Offset.zero : (_pecking ? const Offset(-0.8, 0.7) : _look)
       ..headTurn = sleeping ? 0 : _headTurn
       ..wingSpread = flying || leavingNest ? 0.9 : (falling ? 1.0 : (dragged ? 0.35 : 0))
       ..wingFlap = (flying || falling || leavingNest) ? math.sin(_flapPhase) * 0.55 : 0
@@ -891,9 +891,9 @@ class NoxBrain {
       ..tilt = flying
           ? (vel.dx / (900 * _px)).clamp(-0.35, 0.35)
           : dragged
-              ? math.sin(_t * 6) * 0.12
-              : _pecking
-                  ? -0.5 * math.max(0.0, math.sin(_stateTime * 11))
-                  : (_pushing ? _pushDir * 0.2 : 0.0);
+          ? math.sin(_t * 6) * 0.12
+          : _pecking
+          ? -0.5 * math.max(0.0, math.sin(_stateTime * 11))
+          : (_pushing ? _pushDir * 0.2 : 0.0);
   }
 }

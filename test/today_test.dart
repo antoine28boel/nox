@@ -28,7 +28,10 @@ void main() {
         {'entity_id': 'light.salon', 'state': 'on'},
         'garbage',
       ]);
-      expect(found.calendars, {'calendar.famille': 'Famille', 'calendar.travail': 'calendar.travail'});
+      expect(found.calendars, {
+        'calendar.famille': 'Famille',
+        'calendar.travail': 'calendar.travail',
+      });
       expect(found.todos, {'todo.courses': 'Courses'});
       expect(found.weather!.condition, 'rainy');
       expect(weatherLabel(found.weather!), 'Pluie · 12 °C');

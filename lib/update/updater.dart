@@ -65,16 +65,16 @@ Future<UpdateInfo?> checkForUpdate() async {
   if (kNoxBuild <= 0) return null;
   final client = HttpClient()..userAgent = 'nox-updater';
   try {
-    final request =
-        await client.getUrl(Uri.parse(_latestRelease)).timeout(const Duration(seconds: 15));
+    final request = await client
+        .getUrl(Uri.parse(_latestRelease))
+        .timeout(const Duration(seconds: 15));
     request.headers.set(HttpHeaders.acceptHeader, 'application/vnd.github+json');
     final response = await request.close().timeout(const Duration(seconds: 15));
     if (response.statusCode != 200) {
       await response.drain<void>();
       return null;
     }
-    final body =
-        await response.transform(utf8.decoder).join().timeout(const Duration(seconds: 30));
+    final body = await response.transform(utf8.decoder).join().timeout(const Duration(seconds: 30));
     return parseRelease(jsonDecode(body), kNoxBuild);
   } catch (_) {
     return null;
@@ -206,8 +206,12 @@ Future<String?> downloadAndInstall(UpdateInfo update) async {
 
     final target = File(Platform.resolvedExecutable).parent.path;
     final staged = '${dir.path}${_sep}nox.exe';
-    await Process.start(staged, [_installFlag, target, '$pid'],
-        workingDirectory: dir.path, mode: ProcessStartMode.detached);
+    await Process.start(
+      staged,
+      [_installFlag, target, '$pid'],
+      workingDirectory: dir.path,
+      mode: ProcessStartMode.detached,
+    );
     updateLog('Lancé $staged pour installer dans $target.');
     return null;
   } catch (e) {
@@ -221,12 +225,13 @@ Future<String?> downloadAndInstall(UpdateInfo update) async {
 final _kernel32 = DynamicLibrary.open('kernel32.dll');
 final _openProcess = _kernel32
     .lookupFunction<IntPtr Function(Uint32, Int32, Uint32), int Function(int, int, int)>(
-        'OpenProcess');
-final _waitForSingleObject =
-    _kernel32.lookupFunction<Uint32 Function(IntPtr, Uint32), int Function(int, int)>(
-        'WaitForSingleObject');
-final _closeHandle =
-    _kernel32.lookupFunction<Int32 Function(IntPtr), int Function(int)>('CloseHandle');
+      'OpenProcess',
+    );
+final _waitForSingleObject = _kernel32
+    .lookupFunction<Uint32 Function(IntPtr, Uint32), int Function(int, int)>('WaitForSingleObject');
+final _closeHandle = _kernel32.lookupFunction<Int32 Function(IntPtr), int Function(int)>(
+  'CloseHandle',
+);
 
 /// Waits until process [id] has exited (at most [timeout]).
 void _waitForExit(int id, Duration timeout) {
@@ -270,8 +275,12 @@ Future<void> finishInstall(InstallRequest request) async {
 
   final exe = '${request.target}${_sep}nox.exe';
   try {
-    await Process.start(exe, const [],
-        workingDirectory: request.target, mode: ProcessStartMode.detached);
+    await Process.start(
+      exe,
+      const [],
+      workingDirectory: request.target,
+      mode: ProcessStartMode.detached,
+    );
     updateLog('Redémarrage de $exe.');
   } catch (e) {
     updateLog('Impossible de relancer $exe : $e');

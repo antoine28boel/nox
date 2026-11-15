@@ -51,8 +51,15 @@ class WinDesktop implements Desktop {
 
   /// Moves Nox's window without activating it or blocking the UI thread.
   void moveWindow(int x, int y) {
-    SetWindowPos(ownWindow, HWND_TOPMOST, x, y, 0, 0,
-        SWP_NOSIZE | SWP_NOACTIVATE | SWP_ASYNCWINDOWPOS);
+    SetWindowPos(
+      ownWindow,
+      HWND_TOPMOST,
+      x,
+      y,
+      0,
+      0,
+      SWP_NOSIZE | SWP_NOACTIVATE | SWP_ASYNCWINDOWPOS,
+    );
   }
 
   /// Makes Nox's window a fully opaque layered window, once at startup.
@@ -83,15 +90,22 @@ class WinDesktop implements Desktop {
     final h = (logical.height * s).round();
     final work = workArea(feet);
     final margin = 8 * s;
-    final x = (feet.dx - w / 2)
-        .clamp(work.left + margin, math.max(work.left + margin, work.right - w - margin));
-    final y = (feet.dy - h)
-        .clamp(work.top + margin, math.max(work.top + margin, work.bottom - h - margin));
+    final x = (feet.dx - w / 2).clamp(
+      work.left + margin,
+      math.max(work.left + margin, work.right - w - margin),
+    );
+    final y = (feet.dy - h).clamp(
+      work.top + margin,
+      math.max(work.top + margin, work.bottom - h - margin),
+    );
     final ex = GetWindowLongPtr(ownWindow, GWL_EXSTYLE);
     SetWindowLongPtr(ownWindow, GWL_EXSTYLE, ex & ~(WS_EX_NOACTIVATE | WS_EX_TRANSPARENT));
     SetWindowPos(ownWindow, HWND_TOPMOST, x.round(), y.round(), w, h, SWP_SHOWWINDOW);
     SetForegroundWindow(ownWindow);
   }
+
+  /// Puts the panel back in front (after the browser took the focus).
+  void bringToFront() => SetForegroundWindow(ownWindow);
 
   /// Nox's own window on screen (physical px).
   Rect ownRect() {
@@ -104,8 +118,15 @@ class WinDesktop implements Desktop {
     final s = scale();
     final ex = GetWindowLongPtr(ownWindow, GWL_EXSTYLE);
     SetWindowLongPtr(ownWindow, GWL_EXSTYLE, ex | WS_EX_NOACTIVATE);
-    SetWindowPos(ownWindow, HWND_TOPMOST, 0, 0, (logical.width * s).round(),
-        (logical.height * s).round(), SWP_NOMOVE | SWP_NOACTIVATE);
+    SetWindowPos(
+      ownWindow,
+      HWND_TOPMOST,
+      0,
+      0,
+      (logical.width * s).round(),
+      (logical.height * s).round(),
+      SWP_NOMOVE | SWP_NOACTIVATE,
+    );
   }
 
   FeatherWindow? _feather;
@@ -130,8 +151,15 @@ class WinDesktop implements Desktop {
   void nudgeWindow(int handle, int dx) {
     if (handle == ownWindow || IsWindow(handle) == 0 || IsZoomed(handle) != 0) return;
     if (GetWindowRect(handle, _rect) == 0) return;
-    SetWindowPos(handle, 0, _rect.ref.left + dx, _rect.ref.top, 0, 0,
-        SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_ASYNCWINDOWPOS);
+    SetWindowPos(
+      handle,
+      0,
+      _rect.ref.left + dx,
+      _rect.ref.top,
+      0,
+      0,
+      SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_ASYNCWINDOWPOS,
+    );
   }
 
   @override
@@ -184,8 +212,8 @@ class WinDesktop implements Desktop {
     }
   }
 
-  Rect _toRect(RECT r) => Rect.fromLTRB(
-      r.left.toDouble(), r.top.toDouble(), r.right.toDouble(), r.bottom.toDouble());
+  Rect _toRect(RECT r) =>
+      Rect.fromLTRB(r.left.toDouble(), r.top.toDouble(), r.right.toDouble(), r.bottom.toDouble());
 
   @override
   Rect workArea(Offset at) =>
@@ -207,9 +235,8 @@ class WinDesktop implements Desktop {
     if (IsWindow(handle) == 0 || IsWindowVisible(handle) == 0 || IsIconic(handle) != 0) {
       return null;
     }
-    final ok = DwmGetWindowAttribute(
-            handle, DWMWA_EXTENDED_FRAME_BOUNDS, _rect, sizeOf<RECT>()) ==
-        S_OK;
+    final ok =
+        DwmGetWindowAttribute(handle, DWMWA_EXTENDED_FRAME_BOUNDS, _rect, sizeOf<RECT>()) == S_OK;
     if (!ok && GetWindowRect(handle, _rect) == 0) return null;
     return _toRect(_rect.ref);
   }

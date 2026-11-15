@@ -26,15 +26,27 @@ void main() {
       'state': 'on',
       'attributes': {'friendly_name': 'Bureau', 'brightness': 128},
     },
-    {'entity_id': 'light.abri', 'state': 'off', 'attributes': {'friendly_name': 'Abri'}},
-    {'entity_id': 'scene.film', 'state': 'scening', 'attributes': {'friendly_name': 'Film'}},
+    {
+      'entity_id': 'light.abri',
+      'state': 'off',
+      'attributes': {'friendly_name': 'Abri'},
+    },
+    {
+      'entity_id': 'scene.film',
+      'state': 'scening',
+      'attributes': {'friendly_name': 'Film'},
+    },
     {
       'entity_id': 'climate.salon',
       'state': 'heat',
       'attributes': {'friendly_name': 'Salon', 'current_temperature': 19.5, 'temperature': 20},
     },
     {'entity_id': 'sensor.temp', 'state': '12', 'attributes': {}},
-    {'entity_id': 'todo.courses', 'state': '2', 'attributes': {'friendly_name': 'Courses'}},
+    {
+      'entity_id': 'todo.courses',
+      'state': '2',
+      'attributes': {'friendly_name': 'Courses'},
+    },
   ];
 
   test('media players: playing first, unavailable left out', () {
@@ -83,12 +95,16 @@ void main() {
     final start = DateTime(2026, 11, 15);
     AgendaEvent e(String t, DateTime s, DateTime end) =>
         AgendaEvent(title: t, start: s, end: end, allDay: false);
-    final days = groupByDay([
-      e('Vacances', DateTime(2026, 11, 13), DateTime(2026, 11, 17)),
-      e('Passé', DateTime(2026, 11, 14, 9), DateTime(2026, 11, 14, 10)),
-      e('Dentiste', DateTime(2026, 11, 16, 9), DateTime(2026, 11, 16, 10)),
-      e('Trop loin', DateTime(2026, 11, 22, 9), DateTime(2026, 11, 22, 10)),
-    ], start, 7);
+    final days = groupByDay(
+      [
+        e('Vacances', DateTime(2026, 11, 13), DateTime(2026, 11, 17)),
+        e('Passé', DateTime(2026, 11, 14, 9), DateTime(2026, 11, 14, 10)),
+        e('Dentiste', DateTime(2026, 11, 16, 9), DateTime(2026, 11, 16, 10)),
+        e('Trop loin', DateTime(2026, 11, 22, 9), DateTime(2026, 11, 22, 10)),
+      ],
+      start,
+      7,
+    );
     expect(days.keys, [start, DateTime(2026, 11, 16)]);
     expect(days[start]!.single.title, 'Vacances');
     expect(days[DateTime(2026, 11, 16)]!.single.title, 'Dentiste');

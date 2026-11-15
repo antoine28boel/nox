@@ -4,6 +4,8 @@ import 'brief.dart';
 import 'ha_client.dart';
 import 'panel_style.dart';
 import 'panel_tabs.dart';
+import 'spotify.dart';
+import 'spotify_client.dart';
 import 'today.dart';
 import 'vikunja_client.dart';
 
@@ -33,6 +35,10 @@ class TodayPanel extends StatefulWidget {
     this.client,
     this.vikunjaUrl = '',
     this.vikunja,
+    this.spotify,
+    this.spotifyClientId = '',
+    required this.onSpotifyLogin,
+    required this.onSpotifyLogout,
     required this.onRefresh,
     required this.onClose,
     required this.onSaveSettings,
@@ -59,6 +65,14 @@ class TodayPanel extends StatefulWidget {
   /// Connection to Vikunja, when configured.
   final VikunjaClient? vikunja;
 
+  /// Connection to Spotify, when logged in.
+  final SpotifyClient? spotify;
+  final String spotifyClientId;
+
+  /// Logs in to Spotify with this Client ID; returns an error message or null.
+  final Future<String?> Function(String clientId) onSpotifyLogin;
+  final VoidCallback onSpotifyLogout;
+
   final VoidCallback onRefresh;
   final VoidCallback onClose;
   final SaveServer onSaveSettings;
@@ -69,7 +83,7 @@ class TodayPanel extends StatefulWidget {
 }
 
 class _TodayPanelState extends State<TodayPanel> {
-  late bool _settings = !widget.configured && widget.vikunja == null;
+  late bool _settings = !widget.configured && widget.vikunja == null && widget.spotify == null;
 
   /// Bumped by "Actualiser": rebuilds the live tabs, which reload.
   int _reload = 0;
@@ -182,7 +196,9 @@ class _TodayPanelState extends State<TodayPanel> {
     return TabBarView(
       children: [
         vikunja == null ? missing('Vikunja') : keyed(TrackingTab(client: vikunja)),
-        live((c) => MusicTab(client: c)),
+        client == null && widget.spotify == null
+            ? missing('Home Assistant ni à Spotify')
+            : keyed(MusicTab(client: client, spotify: widget.spotify)),
         live((c) => HomeTab(client: c)),
         live((c) => AgendaTab(client: c, now: widget.now, brief: widget.brief)),
         live((c) => TasksTab(client: c)),
@@ -216,6 +232,12 @@ class _TodayPanelState extends State<TodayPanel> {
           hint: 'http://vikunja.local:3456',
           configured: widget.vikunja != null,
           onSave: widget.onSaveVikunja,
+        ),
+        _SpotifyForm(
+          clientId: widget.spotifyClientId,
+          connected: widget.spotify != null,
+          onLogin: widget.onSpotifyLogin,
+          onLogout: widget.onSpotifyLogout,
         ),
       ],
     );
@@ -315,6 +337,100 @@ class _ServerFormState extends State<_ServerForm> {
               ),
           ],
         ),
+      ],
+    );
+  }
+}
+
+/// Client ID of the user's Spotify app and the login button.
+class _SpotifyForm extends StatefulWidget {
+  const _SpotifyForm({
+    required this.clientId,
+    required this.connected,
+    required this.onLogin,
+    required this.onLogout,
+  });
+
+  final String clientId;
+  final bool connected;
+  final Future<String?> Function(String clientId) onLogin;
+  final VoidCallback onLogout;
+
+  @override
+  State<_SpotifyForm> createState() => _SpotifyFormState();
+}
+
+class _SpotifyFormState extends State<_SpotifyForm> {
+  late final _clientId = TextEditingController(text: widget.clientId);
+  bool _waiting = false;
+  String? _error;
+
+  @override
+  void dispose() {
+    _clientId.dispose();
+    super.dispose();
+  }
+
+  Future<void> _login() async {
+    setState(() {
+      _waiting = true;
+      _error = null;
+    });
+    final error = await widget.onLogin(_clientId.text.trim());
+    if (!mounted) return;
+    setState(() {
+      _waiting = false;
+      _error = error;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return PanelSection(
+      title: 'Spotify',
+      children: [
+        const SelectableText(
+          'Crée une app gratuite sur developer.spotify.com/dashboard (API : Web API), '
+          'ajoute l\'adresse de redirection $kSpotifyRedirect, puis colle son Client ID '
+          'ici. La connexion s\'ouvre dans ton navigateur. Premium est nécessaire pour '
+          'piloter la lecture.',
+          style: TextStyle(color: _muted, fontSize: 13),
+        ),
+        const SizedBox(height: 8),
+        TextField(
+          controller: _clientId,
+          enabled: !_waiting,
+          decoration: const InputDecoration(labelText: 'Client ID'),
+        ),
+        const SizedBox(height: 12),
+        if (_error != null)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 10),
+            child: Text(_error!, style: const TextStyle(color: panelError)),
+          ),
+        Row(
+          children: [
+            FilledButton(
+              onPressed: _waiting ? null : _login,
+              child: Text(
+                _waiting
+                    ? 'En attente du navigateur…'
+                    : widget.connected
+                    ? 'Se reconnecter'
+                    : 'Se connecter à Spotify',
+              ),
+            ),
+            if (widget.connected && !_waiting) ...[
+              const SizedBox(width: 6),
+              TextButton(onPressed: widget.onLogout, child: const Text('Déconnecter')),
+            ],
+          ],
+        ),
+        if (widget.connected && !_waiting)
+          const Padding(
+            padding: EdgeInsets.only(top: 6),
+            child: Text('Connecté', style: TextStyle(color: _accent)),
+          ),
       ],
     );
   }

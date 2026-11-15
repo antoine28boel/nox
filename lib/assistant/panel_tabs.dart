@@ -6,6 +6,8 @@ import 'brief.dart';
 import 'ha_client.dart';
 import 'home.dart';
 import 'panel_style.dart';
+import 'spotify_client.dart';
+import 'spotify_view.dart';
 import 'today.dart';
 import 'vikunja.dart';
 import 'vikunja_client.dart';
@@ -98,24 +100,37 @@ mixin _LiveTab<T extends StatefulWidget, D> on State<T> {
 // ---------------------------------------------------------------- Musique
 
 class MusicTab extends StatefulWidget {
-  const MusicTab({super.key, required this.client});
+  const MusicTab({super.key, this.client, this.spotify});
 
-  final HaClient client;
+  /// Home Assistant's players, when connected.
+  final HaClient? client;
+
+  /// Spotify, shown first, when connected.
+  final SpotifyClient? spotify;
 
   @override
   State<MusicTab> createState() => _MusicTabState();
 }
 
 class _MusicTabState extends State<MusicTab> with _LiveTab<MusicTab, List<MediaPlayer>> {
-  HaClient get client => widget.client;
+  HaClient get client => widget.client!;
   @override
-  Duration get every => const Duration(seconds: 3);
+  Duration? get every => widget.client == null ? null : const Duration(seconds: 3);
 
   /// Volume being dragged, per player, so polling does not fight the slider.
   final _dragging = <String, double>{};
 
   @override
-  Future<List<MediaPlayer>> load() async => parseMediaPlayers(await client.states());
+  Future<List<MediaPlayer>> load() async {
+    if (widget.client == null) return const [];
+    final players = parseMediaPlayers(await client.states());
+    // Spotify is already shown above, with more controls.
+    if (widget.spotify == null) return players;
+    return [
+      for (final p in players)
+        if (!p.id.startsWith('media_player.spotify')) p,
+    ];
+  }
 
   Future<void> _call(MediaPlayer p, String service, [Map<String, Object?> extra = const {}]) =>
       act(() => client.callService('media_player', service, {'entity_id': p.id, ...extra}));
@@ -124,7 +139,9 @@ class _MusicTabState extends State<MusicTab> with _LiveTab<MusicTab, List<MediaP
   Widget build(BuildContext context) {
     return frame(
       (players) => [
-        if (players.isEmpty) const PanelNote('Aucun lecteur trouvé dans Home Assistant.'),
+        if (widget.spotify case final spotify?) SpotifySection(client: spotify),
+        if (players.isEmpty && widget.client != null)
+          const PanelNote('Aucun autre lecteur dans Home Assistant.'),
         for (final p in players) _player(p),
       ],
     );

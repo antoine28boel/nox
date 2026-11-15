@@ -14,8 +14,7 @@ class OwlPainter extends CustomPainter {
     required this.feet,
     this.owlScale = 0.4,
     this.windowSize = const Size(200, 180),
-  })
-      : super(repaint: pose);
+  }) : super(repaint: pose);
 
   final NoxPose pose;
 
@@ -89,13 +88,13 @@ class OwlPainter extends CustomPainter {
   /// The "dynamic island": a dark pill at the top of the screen where only
   /// Nox's eyes show. Opened (expand = 1) when he is called.
   Rect _islandRect(double island, double expand, double retract) => islandBox(
-        window: windowSize,
-        centerX: feet.dx,
-        island: island,
-        expand: expand,
-        retract: retract,
-        bottom: pose.nestBottom,
-      );
+    window: windowSize,
+    centerX: feet.dx,
+    island: island,
+    expand: expand,
+    retract: retract,
+    bottom: pose.nestBottom,
+  );
 
   void _islandPill(Canvas canvas) {
     final a = pose.island;
@@ -138,25 +137,30 @@ class OwlPainter extends CustomPainter {
       ..strokeCap = StrokeCap.round;
     if (pose.happy) {
       canvas.drawPath(
-          Path()
-            ..moveTo(c.dx - r, c.dy + r * 0.3)
-            ..quadraticBezierTo(c.dx, c.dy - r * 0.8, c.dx + r, c.dy + r * 0.3),
-          line);
+        Path()
+          ..moveTo(c.dx - r, c.dy + r * 0.3)
+          ..quadraticBezierTo(c.dx, c.dy - r * 0.8, c.dx + r, c.dy + r * 0.3),
+        line,
+      );
       return;
     }
     if (pose.sleeping || pose.eyeOpen < 0.15) {
       canvas.drawPath(
-          Path()
-            ..moveTo(c.dx - r, c.dy)
-            ..quadraticBezierTo(c.dx, c.dy + r * 0.6, c.dx + r, c.dy),
-          line);
+        Path()
+          ..moveTo(c.dx - r, c.dy)
+          ..quadraticBezierTo(c.dx, c.dy + r * 0.6, c.dx + r, c.dy),
+        line,
+      );
       return;
     }
     canvas.drawCircle(c, r, _fill(iris));
     final p = c + pose.look * (r * 0.35);
     canvas.drawCircle(p, r * 0.6, _fill(_pupil.withValues(alpha: alpha)));
-    canvas.drawCircle(p + Offset(-r * 0.25, -r * 0.25), r * 0.2,
-        _fill(Colors.white.withValues(alpha: alpha)));
+    canvas.drawCircle(
+      p + Offset(-r * 0.25, -r * 0.25),
+      r * 0.2,
+      _fill(Colors.white.withValues(alpha: alpha)),
+    );
   }
 
   Paint _fill(Color c) => Paint()
@@ -174,9 +178,7 @@ class OwlPainter extends CustomPainter {
       final c = Offset(200 + side * 102, 300);
       canvas.translate(c.dx, c.dy);
       canvas.rotate(-side * 14 * math.pi / 180);
-      canvas.drawOval(
-          Rect.fromCenter(center: Offset.zero, width: 60, height: 136),
-          _fill(_wing));
+      canvas.drawOval(Rect.fromCenter(center: Offset.zero, width: 60, height: 136), _fill(_wing));
       canvas.restore();
     }
   }
@@ -199,20 +201,27 @@ class OwlPainter extends CustomPainter {
 
   void _body(Canvas canvas) {
     canvas.drawOval(
-        Rect.fromCenter(center: const Offset(200, 280), width: 220, height: 236),
-        _fill(_plumage));
+      Rect.fromCenter(center: const Offset(200, 280), width: 220, height: 236),
+      _fill(_plumage),
+    );
     canvas.drawOval(
-        Rect.fromCenter(center: const Offset(200, 320), width: 136, height: 144),
-        _fill(_belly));
+      Rect.fromCenter(center: const Offset(200, 320), width: 136, height: 144),
+      _fill(_belly),
+    );
     final stroke = Paint()
       ..color = _chevron
       ..style = PaintingStyle.stroke
       ..strokeWidth = 3
       ..strokeCap = StrokeCap.round;
     const rows = [
-      [170.0, 305.0], [196.0, 305.0], [222.0, 305.0],
-      [183.0, 328.0], [209.0, 328.0],
-      [170.0, 351.0], [196.0, 351.0], [222.0, 351.0],
+      [170.0, 305.0],
+      [196.0, 305.0],
+      [222.0, 305.0],
+      [183.0, 328.0],
+      [209.0, 328.0],
+      [170.0, 351.0],
+      [196.0, 351.0],
+      [222.0, 351.0],
     ];
     for (final r in rows) {
       final p = Path()
@@ -240,10 +249,8 @@ class OwlPainter extends CustomPainter {
 
     final cheekAlpha = pose.happy ? 1.0 : 0.75;
     final cheek = _fill(_cheek.withValues(alpha: _cheek.a * cheekAlpha));
-    canvas.drawOval(
-        Rect.fromCenter(center: Offset(132 + dx, 285), width: 28, height: 16), cheek);
-    canvas.drawOval(
-        Rect.fromCenter(center: Offset(268 + dx, 285), width: 28, height: 16), cheek);
+    canvas.drawOval(Rect.fromCenter(center: Offset(132 + dx, 285), width: 28, height: 16), cheek);
+    canvas.drawOval(Rect.fromCenter(center: Offset(268 + dx, 285), width: 28, height: 16), cheek);
   }
 
   void _eye(Canvas canvas, Offset c) {
@@ -284,8 +291,9 @@ class OwlPainter extends CustomPainter {
       canvas.clipPath(Path()..addOval(Rect.fromCircle(center: c, radius: irisR + 1)));
       final h = (irisR * 2 + 2) * (1 - pose.eyeOpen);
       canvas.drawRect(
-          Rect.fromLTWH(c.dx - irisR - 1, c.dy - irisR - 1, irisR * 2 + 2, h),
-          _fill(_faceDisc));
+        Rect.fromLTWH(c.dx - irisR - 1, c.dy - irisR - 1, irisR * 2 + 2, h),
+        _fill(_faceDisc),
+      );
       canvas.restore();
     }
   }

@@ -6,14 +6,13 @@ Map<String, Object?> release({
   String name = 'nox-windows.zip',
   String url = 'https://github.com/antoine28boel/nox/releases/download/build-12/nox-windows.zip',
   String? digest,
-}) =>
-    {
-      'tag_name': tag,
-      'assets': [
-        {'name': 'notes.txt', 'browser_download_url': 'https://example.com/notes.txt'},
-        {'name': name, 'browser_download_url': url, 'digest': digest},
-      ],
-    };
+}) => {
+  'tag_name': tag,
+  'assets': [
+    {'name': 'notes.txt', 'browser_download_url': 'https://example.com/notes.txt'},
+    {'name': name, 'browser_download_url': url, 'digest': digest},
+  ],
+};
 
 void main() {
   group('parseRelease', () {
@@ -36,9 +35,12 @@ void main() {
     test('refuses a download from anywhere else', () {
       expect(parseRelease(release(url: 'https://example.com/nox-windows.zip'), 1), isNull);
       expect(
-          parseRelease(
-              release(url: 'http://github.com/antoine28boel/nox/releases/download/x.zip'), 1),
-          isNull);
+        parseRelease(
+          release(url: 'http://github.com/antoine28boel/nox/releases/download/x.zip'),
+          1,
+        ),
+        isNull,
+      );
     });
 
     test('ignores anything that is not one of our releases', () {
@@ -54,7 +56,8 @@ void main() {
     const hash = '9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08';
 
     test('reads the hash line', () {
-      const out = 'SHA256 hash of C:\\tmp\\nox-windows.zip:\r\n$hash\r\n'
+      const out =
+          'SHA256 hash of C:\\tmp\\nox-windows.zip:\r\n$hash\r\n'
           'CertUtil: -hashfile command completed successfully.\r\n';
       expect(parseCertutilHash(out), hash);
     });
@@ -85,9 +88,11 @@ void main() {
   });
 
   test('copyOrder copies nox.exe last', () {
-    expect(
-      copyOrder(['nox.exe', r'data\app.so', 'flutter_windows.dll', r'data\icudtl.dat']),
-      [r'data\app.so', r'data\icudtl.dat', 'flutter_windows.dll', 'nox.exe'],
-    );
+    expect(copyOrder(['nox.exe', r'data\app.so', 'flutter_windows.dll', r'data\icudtl.dat']), [
+      r'data\app.so',
+      r'data\icudtl.dat',
+      'flutter_windows.dll',
+      'nox.exe',
+    ]);
   });
 }
