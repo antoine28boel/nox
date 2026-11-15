@@ -498,6 +498,7 @@ class _NoxAppState extends State<NoxApp> with TrayListener {
                 status: _todayStatus,
                 configured: _haConfigured,
                 haUrl: _haUrl,
+                client: _haConfigured ? HaClient(_haUrl, _haToken) : null,
                 onRefresh: _refreshToday,
                 onClose: _closePanel,
                 onSaveSettings: _saveHaSettings,

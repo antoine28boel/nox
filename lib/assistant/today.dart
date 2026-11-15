@@ -289,3 +289,19 @@ String? normalizeHaUrl(String input) {
           path: path)
       .toString();
 }
+
+/// Events grouped by day (local midnight), for [days] days from [start]
+/// (a local midnight). An event that began earlier and is still going on
+/// shows on [start]. Days without events are left out.
+Map<DateTime, List<AgendaEvent>> groupByDay(List<AgendaEvent> events, DateTime start, int days) {
+  final end = DateTime(start.year, start.month, start.day + days);
+  final byDay = <DateTime, List<AgendaEvent>>{};
+  for (final e in events) {
+    if (!e.end.isAfter(start) && !e.start.isAtSameMomentAs(start)) continue;
+    if (!e.start.isBefore(end)) continue;
+    final day = e.start.isBefore(start) ? start : DateTime(e.start.year, e.start.month, e.start.day);
+    (byDay[day] ??= []).add(e);
+  }
+  final keys = byDay.keys.toList()..sort();
+  return {for (final k in keys) k: byDay[k]!};
+}

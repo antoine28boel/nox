@@ -1,19 +1,22 @@
 import 'package:flutter/material.dart';
 
 import 'brief.dart';
+import 'ha_client.dart';
+import 'panel_style.dart';
+import 'panel_tabs.dart';
 import 'today.dart';
 
 /// Size of the panel window, in logical pixels.
-const kPanelSize = Size(380, 540);
+const kPanelSize = Size(420, 600);
 
-const _background = Color(0xFF2B211A);
-const _card = Color(0xFF3A2D23);
-const _text = Color(0xFFF5E9D3);
-const _muted = Color(0xFFBFAE95);
-const _accent = Color(0xFFF2B53A);
+const _background = panelBackground;
+const _text = panelText;
+const _muted = panelMuted;
+const _accent = panelAccent;
 
-/// The "Aujourd'hui" panel: weather, agenda and tasks read from Home
-/// Assistant, plus the form to connect to it.
+/// The assistant panel, in tabs: the day (brief, weather, agenda, tasks),
+/// music, home devices, the week's agenda and the to-do lists, all from
+/// Home Assistant; plus the form to connect to it.
 class TodayPanel extends StatefulWidget {
   const TodayPanel({
     super.key,
@@ -23,6 +26,7 @@ class TodayPanel extends StatefulWidget {
     required this.status,
     required this.configured,
     required this.haUrl,
+    this.client,
     required this.onRefresh,
     required this.onClose,
     required this.onSaveSettings,
@@ -43,6 +47,9 @@ class TodayPanel extends StatefulWidget {
   final bool configured;
   final String haUrl;
 
+  /// Connection to Home Assistant, when configured.
+  final HaClient? client;
+
   final VoidCallback onRefresh;
   final VoidCallback onClose;
 
@@ -60,6 +67,9 @@ class _TodayPanelState extends State<TodayPanel> {
   final _token = TextEditingController();
   bool _saving = false;
   String? _error;
+
+  /// Bumped by "Actualiser": rebuilds the live tabs, which reload.
+  int _reload = 0;
 
   @override
   void dispose() {
@@ -95,12 +105,16 @@ class _TodayPanelState extends State<TodayPanel> {
         clipBehavior: Clip.antiAlias,
         child: DefaultTextStyle(
           style: const TextStyle(color: _text, fontSize: 14),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              _header(),
-              Expanded(child: _settings ? _settingsForm() : _today()),
-            ],
+          child: DefaultTabController(
+            length: 5,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                _header(),
+                if (!_settings) _tabBar(),
+                Expanded(child: _settings ? _settingsForm() : _tabs()),
+              ],
+            ),
           ),
         ),
       ),
@@ -116,14 +130,20 @@ class _TodayPanelState extends State<TodayPanel> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(_settings ? 'Home Assistant' : "Aujourd'hui",
+                Text(_settings ? 'Home Assistant' : 'Nox',
                     style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w700)),
                 Text(frenchDate(widget.now), style: const TextStyle(color: _muted)),
               ],
             ),
           ),
           if (!_settings && widget.configured)
-            _HeaderButton(label: 'Actualiser', onTap: widget.onRefresh),
+            _HeaderButton(
+              label: 'Actualiser',
+              onTap: () {
+                setState(() => _reload++);
+                widget.onRefresh();
+              },
+            ),
           _HeaderButton(
             label: _settings ? 'Retour' : 'Réglages',
             onTap: () => setState(() => _settings = !_settings),
@@ -131,6 +151,48 @@ class _TodayPanelState extends State<TodayPanel> {
           _HeaderButton(label: 'Fermer', onTap: widget.onClose),
         ],
       ),
+    );
+  }
+
+  Widget _tabBar() {
+    Tab tab(IconData icon, String label) => Tab(
+          height: 50,
+          iconMargin: const EdgeInsets.only(bottom: 2),
+          icon: Icon(icon, size: 20),
+          child: Text(label, style: const TextStyle(fontSize: 11)),
+        );
+    return TabBar(
+      labelColor: _accent,
+      unselectedLabelColor: _muted,
+      indicatorColor: _accent,
+      dividerColor: Colors.transparent,
+      labelPadding: EdgeInsets.zero,
+      tabs: [
+        tab(Icons.wb_sunny_outlined, 'Jour'),
+        tab(Icons.music_note_rounded, 'Musique'),
+        tab(Icons.home_outlined, 'Maison'),
+        tab(Icons.calendar_month_outlined, 'Agenda'),
+        tab(Icons.checklist_rounded, 'Tâches'),
+      ],
+    );
+  }
+
+  Widget _tabs() {
+    final client = widget.client;
+    Widget live(Widget Function(HaClient client) build) => client == null
+        ? const Padding(
+            padding: EdgeInsets.all(18),
+            child: PanelNote('Nox n\'est pas encore relié à Home Assistant. Ouvre « Réglages ».'),
+          )
+        : KeyedSubtree(key: ValueKey(_reload), child: build(client));
+    return TabBarView(
+      children: [
+        _today(),
+        live((c) => MusicTab(client: c)),
+        live((c) => HomeTab(client: c)),
+        live((c) => AgendaTab(client: c, now: widget.now)),
+        live((c) => TasksTab(client: c)),
+      ],
     );
   }
 
@@ -144,7 +206,7 @@ class _TodayPanelState extends State<TodayPanel> {
           child: Text(widget.status, style: const TextStyle(color: _muted, fontSize: 12)),
         ),
         if (widget.brief case final brief?)
-          _Section(title: 'Brief', children: [
+          PanelSection(title: 'Brief', children: [
             Text(brief.text, style: const TextStyle(height: 1.4)),
             if (brief.byAi)
               const Padding(
@@ -154,21 +216,21 @@ class _TodayPanelState extends State<TodayPanel> {
               ),
           ]),
         if (!widget.configured)
-          const _Section(title: 'Connexion', children: [
+          const PanelSection(title: 'Connexion', children: [
             Text('Nox n\'est pas encore relié à Home Assistant. Ouvre « Réglages ».'),
           ])
         else if (data == null)
-          const _Section(title: 'En attente', children: [
+          const PanelSection(title: 'En attente', children: [
             Text('Aucune donnée pour l\'instant.'),
           ])
         else ...[
           if (data.weather != null)
-            _Section(title: 'Météo', children: [Text(weatherLabel(data.weather!))]),
-          _Section(title: 'Agenda', children: [
+            PanelSection(title: 'Météo', children: [Text(weatherLabel(data.weather!))]),
+          PanelSection(title: 'Agenda', children: [
             if (data.events.isEmpty) const Text('Rien de prévu.', style: TextStyle(color: _muted)),
             for (final e in data.events) _EventRow(event: e),
           ]),
-          _Section(title: 'Tâches', children: [
+          PanelSection(title: 'Tâches', children: [
             if (data.tasks.isEmpty)
               const Text('Aucune tâche en attente.', style: TextStyle(color: _muted)),
             for (final t in data.tasks)
@@ -213,7 +275,7 @@ class _TodayPanelState extends State<TodayPanel> {
         if (_error != null)
           Padding(
             padding: const EdgeInsets.only(bottom: 12),
-            child: Text(_error!, style: const TextStyle(color: Color(0xFFFF8F8F))),
+            child: Text(_error!, style: const TextStyle(color: panelError)),
           ),
         Align(
           alignment: Alignment.centerLeft,
@@ -239,38 +301,11 @@ class _HeaderButton extends StatelessWidget {
       onPressed: onTap,
       style: TextButton.styleFrom(
         foregroundColor: _accent,
-        padding: const EdgeInsets.symmetric(horizontal: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 6),
         minimumSize: const Size(0, 36),
+        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
       ),
       child: Text(label),
-    );
-  }
-}
-
-class _Section extends StatelessWidget {
-  const _Section({required this.title, required this.children});
-
-  final String title;
-  final List<Widget> children;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 10),
-      padding: const EdgeInsets.fromLTRB(14, 10, 14, 12),
-      decoration: BoxDecoration(color: _card, borderRadius: BorderRadius.circular(12)),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Padding(
-            padding: const EdgeInsets.only(bottom: 6),
-            child: Text(title.toUpperCase(),
-                style: const TextStyle(
-                    color: _accent, fontSize: 11, fontWeight: FontWeight.w700, letterSpacing: 1)),
-          ),
-          ...children,
-        ],
-      ),
     );
   }
 }

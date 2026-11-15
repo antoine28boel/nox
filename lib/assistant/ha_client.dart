@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'brief.dart';
+import 'home.dart';
 import 'today.dart';
 
 /// A problem Nox can explain to the user (wrong token, unexpected answer…).
@@ -64,6 +65,60 @@ class HaClient {
     if (answer is! Map || answer['message'] is! String) {
       throw const HaException("Cette adresse ne répond pas comme Home Assistant.");
     }
+  }
+
+  /// Every entity's state, as returned by `/api/states`.
+  Future<Object?> states() => _request('GET', _uri('/api/states'));
+
+  /// Calls a Home Assistant service, e.g. `light.toggle`.
+  Future<void> callService(String domain, String service, Map<String, Object?> data) async {
+    await _request('POST', _uri('/api/services/$domain/$service'), body: data);
+  }
+
+  /// Address of a picture given by Home Assistant (album cover…).
+  Uri pictureUri(String path) {
+    final parsed = Uri.parse(path);
+    if (parsed.hasScheme) return parsed;
+    final base = Uri.parse(baseUrl);
+    return base.replace(path: '${base.path}${parsed.path}', query: parsed.query);
+  }
+
+  /// The events of every calendar from [start] to [end], sorted.
+  Future<List<AgendaEvent>> fetchEvents(DateTime start, DateTime end) async {
+    final found = discoverEntities(await states());
+    final range = {
+      'start': start.toUtc().toIso8601String(),
+      'end': end.toUtc().toIso8601String(),
+    };
+    final events = <AgendaEvent>[];
+    for (final calendar in found.calendars.entries) {
+      try {
+        final json = await _request('GET', _uri('/api/calendars/${calendar.key}', range));
+        events.addAll(parseCalendarEvents(json, calendar: calendar.value));
+      } on HaException {
+        // One broken calendar must not hide the others.
+      }
+    }
+    sortEvents(events);
+    return events;
+  }
+
+  /// Every to-do list with all its items (done ones included).
+  Future<List<TodoList>> fetchTodoLists() async {
+    final lists = <TodoList>[];
+    for (final entry in parseTodoLists(await states()).entries) {
+      try {
+        final json = await _request(
+          'POST',
+          _uri('/api/services/todo/get_items', const {'return_response': ''}),
+          body: {'entity_id': entry.key},
+        );
+        lists.add(TodoList(id: entry.key, name: entry.value, items: parseTodoList(json, entry.key)));
+      } on HaException {
+        lists.add(TodoList(id: entry.key, name: entry.value));
+      }
+    }
+    return lists;
   }
 
   /// Fetches today's agenda, the weather and the tasks still to do.
