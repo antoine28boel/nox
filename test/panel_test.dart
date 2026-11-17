@@ -25,7 +25,7 @@ void main() {
         ),
       ),
     );
-    for (final label in ['Suivi', 'Musique', 'Maison', 'Agenda', 'Tâches']) {
+    for (final label in ['Suivi', 'Musique', 'Maison', 'Agenda', 'Tâches', 'Budget']) {
       expect(find.text(label), findsOneWidget);
     }
     expect(find.textContaining('relié à Vikunja'), findsOneWidget);
@@ -35,5 +35,8 @@ void main() {
     await tester.tap(find.text('Musique'));
     await tester.pumpAndSettle();
     expect(find.textContaining('ni à Spotify'), findsOneWidget);
+    await tester.tap(find.text('Budget'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('relié à Actual Budget'), findsOneWidget);
   });
 }

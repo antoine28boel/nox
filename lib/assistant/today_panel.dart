@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import 'actual_client.dart';
 import 'brief.dart';
 import 'ha_client.dart';
 import 'panel_style.dart';
@@ -21,9 +22,18 @@ const _accent = panelAccent;
 /// Returns an error message, or null when the connection works.
 typedef SaveServer = Future<String?> Function(String url, String token);
 
+/// Saves the actual-http-api address, its key, the budget's sync ID and its
+/// encryption password (empty key or password keep the saved ones).
+typedef SaveActual = Future<String?> Function(
+  String url,
+  String key,
+  String syncId,
+  String password,
+);
+
 /// The assistant panel, in tabs: project tracking (Vikunja), music, home
-/// devices, the week's agenda and the to-do lists (Home Assistant); plus
-/// the forms to connect to both.
+/// devices, the week's agenda and the to-do lists (Home Assistant), the
+/// budget (Actual); plus the forms to connect to them.
 class TodayPanel extends StatefulWidget {
   const TodayPanel({
     super.key,
@@ -37,6 +47,10 @@ class TodayPanel extends StatefulWidget {
     this.vikunja,
     this.spotify,
     this.spotifyClientId = '',
+    this.actualUrl = '',
+    this.actualSyncId = '',
+    this.actual,
+    this.onSaveActual,
     required this.onSpotifyLogin,
     required this.onSpotifyLogout,
     required this.onRefresh,
@@ -70,6 +84,13 @@ class TodayPanel extends StatefulWidget {
   final SpotifyClient? spotify;
   final String spotifyClientId;
 
+  final String actualUrl;
+  final String actualSyncId;
+
+  /// Connection to Actual Budget (through actual-http-api), when configured.
+  final ActualClient? actual;
+  final SaveActual? onSaveActual;
+
   /// Logs in to Spotify with this Client ID; returns an error message or null.
   final Future<String?> Function(String clientId) onSpotifyLogin;
   final VoidCallback onSpotifyLogout;
@@ -88,7 +109,11 @@ class TodayPanel extends StatefulWidget {
 
 class _TodayPanelState extends State<TodayPanel> {
   late final PanelMemory _memory = widget.memory ?? PanelMemory();
-  late bool _settings = !widget.configured && widget.vikunja == null && widget.spotify == null;
+  late bool _settings =
+      !widget.configured &&
+      widget.vikunja == null &&
+      widget.spotify == null &&
+      widget.actual == null;
 
   /// Bumped by "Actualiser": rebuilds the live tabs, which reload.
   int _reload = 0;
@@ -104,7 +129,7 @@ class _TodayPanelState extends State<TodayPanel> {
         child: DefaultTextStyle(
           style: const TextStyle(color: _text, fontSize: 14),
           child: DefaultTabController(
-            length: 5,
+            length: 6,
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
@@ -170,7 +195,14 @@ class _TodayPanelState extends State<TodayPanel> {
       height: 50,
       iconMargin: const EdgeInsets.only(bottom: 2),
       icon: Icon(icon, size: 20),
-      child: Text(label, style: const TextStyle(fontSize: 11)),
+      // Six tabs share 420 px: a label never wraps onto a second line.
+      child: Text(
+        label,
+        maxLines: 1,
+        softWrap: false,
+        overflow: TextOverflow.fade,
+        style: const TextStyle(fontSize: 11),
+      ),
     );
     return TabBar(
       labelColor: _accent,
@@ -184,6 +216,7 @@ class _TodayPanelState extends State<TodayPanel> {
         tab(Icons.home_outlined, 'Maison'),
         tab(Icons.calendar_month_outlined, 'Agenda'),
         tab(Icons.checklist_rounded, 'Tâches'),
+        tab(Icons.account_balance_wallet_outlined, 'Budget'),
       ],
     );
   }
@@ -207,6 +240,9 @@ class _TodayPanelState extends State<TodayPanel> {
         live((c) => HomeTab(client: c, memory: _memory)),
         live((c) => AgendaTab(client: c, memory: _memory, now: widget.now, brief: widget.brief)),
         live((c) => TasksTab(client: c, memory: _memory)),
+        widget.actual == null
+            ? missing('Actual Budget')
+            : keyed(BudgetTab(client: widget.actual!, memory: _memory, now: widget.now)),
       ],
     );
   }
@@ -244,6 +280,13 @@ class _TodayPanelState extends State<TodayPanel> {
           onLogin: widget.onSpotifyLogin,
           onLogout: widget.onSpotifyLogout,
         ),
+        if (widget.onSaveActual case final onSave?)
+          _ActualForm(
+            url: widget.actualUrl,
+            syncId: widget.actualSyncId,
+            configured: widget.actual != null,
+            onSave: onSave,
+          ),
       ],
     );
   }
@@ -321,6 +364,130 @@ class _ServerFormState extends State<_ServerForm> {
           decoration: InputDecoration(
             labelText: 'Jeton',
             hintText: widget.configured ? 'Laisser vide pour garder le jeton actuel' : null,
+          ),
+        ),
+        const SizedBox(height: 12),
+        if (_error != null)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 10),
+            child: Text(_error!, style: const TextStyle(color: panelError)),
+          ),
+        Row(
+          children: [
+            FilledButton(
+              onPressed: _saving ? null : _save,
+              child: Text(_saving ? 'Test en cours…' : 'Tester et enregistrer'),
+            ),
+            if (_saved)
+              const Padding(
+                padding: EdgeInsets.only(left: 10),
+                child: Text('Connecté', style: TextStyle(color: _accent)),
+              ),
+          ],
+        ),
+      ],
+    );
+  }
+}
+
+/// Address and key of actual-http-api, and which budget to read.
+class _ActualForm extends StatefulWidget {
+  const _ActualForm({
+    required this.url,
+    required this.syncId,
+    required this.configured,
+    required this.onSave,
+  });
+
+  final String url;
+  final String syncId;
+  final bool configured;
+  final SaveActual onSave;
+
+  @override
+  State<_ActualForm> createState() => _ActualFormState();
+}
+
+class _ActualFormState extends State<_ActualForm> {
+  late final _url = TextEditingController(text: widget.url);
+  late final _syncId = TextEditingController(text: widget.syncId);
+  final _key = TextEditingController();
+  final _password = TextEditingController();
+  bool _saving = false;
+  String? _error;
+  bool _saved = false;
+
+  @override
+  void dispose() {
+    _url.dispose();
+    _syncId.dispose();
+    _key.dispose();
+    _password.dispose();
+    super.dispose();
+  }
+
+  Future<void> _save() async {
+    setState(() {
+      _saving = true;
+      _error = null;
+      _saved = false;
+    });
+    final error = await widget.onSave(_url.text, _key.text, _syncId.text, _password.text);
+    if (!mounted) return;
+    setState(() {
+      _saving = false;
+      _error = error;
+      _saved = error == null;
+      if (error == null) {
+        _key.clear();
+        _password.clear();
+      }
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final keep = widget.configured ? 'Laisser vide pour garder l\'actuel' : null;
+    return PanelSection(
+      title: 'Actual Budget',
+      children: [
+        const Text(
+          'Nox passe par actual-http-api (conteneur jhonderson/actual-http-api, '
+          'port 5007) installé à côté de ton serveur Actual. Indique son adresse, '
+          'sa clé (API_KEY) et l\'ID de synchronisation du budget (Actual → '
+          'Paramètres → Avancé). La clé reste sur ce PC.',
+          style: TextStyle(color: _muted, fontSize: 13),
+        ),
+        const SizedBox(height: 8),
+        TextField(
+          controller: _url,
+          enabled: !_saving,
+          decoration: const InputDecoration(
+            labelText: 'Adresse',
+            hintText: 'http://actual.local:5007',
+          ),
+        ),
+        const SizedBox(height: 8),
+        TextField(
+          controller: _key,
+          enabled: !_saving,
+          obscureText: true,
+          decoration: InputDecoration(labelText: 'Clé d\'API', hintText: keep),
+        ),
+        const SizedBox(height: 8),
+        TextField(
+          controller: _syncId,
+          enabled: !_saving,
+          decoration: const InputDecoration(labelText: 'ID de synchronisation du budget'),
+        ),
+        const SizedBox(height: 8),
+        TextField(
+          controller: _password,
+          enabled: !_saving,
+          obscureText: true,
+          decoration: InputDecoration(
+            labelText: 'Mot de passe de chiffrement (si le budget est chiffré)',
+            hintText: keep,
           ),
         ),
         const SizedBox(height: 12),

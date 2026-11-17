@@ -13,6 +13,7 @@ import 'assistant/brief.dart';
 import 'assistant/ha_client.dart';
 import 'assistant/panel_style.dart';
 import 'assistant/today.dart';
+import 'assistant/actual_client.dart';
 import 'assistant/spotify_client.dart';
 import 'assistant/today_panel.dart';
 import 'assistant/vikunja_client.dart';
@@ -246,6 +247,44 @@ class _NoxAppState extends State<NoxApp> with TrayListener {
     }
     await widget.prefs.setString('vikunja_url', base);
     await widget.prefs.setString('vikunja_token', secret);
+    if (mounted) setState(() {});
+    return null;
+  }
+
+  String get _actualUrl => widget.prefs.getString('actual_url') ?? '';
+  String get _actualKey => widget.prefs.getString('actual_key') ?? '';
+  String get _actualSyncId => widget.prefs.getString('actual_sync_id') ?? '';
+  String get _actualPassword => widget.prefs.getString('actual_password') ?? '';
+
+  ActualClient? get _actual =>
+      _actualUrl.isNotEmpty && _actualKey.isNotEmpty && _actualSyncId.isNotEmpty
+      ? ActualClient(_actualUrl, _actualKey, _actualSyncId, password: _actualPassword)
+      : null;
+
+  Future<String?> _saveActualSettings(
+    String url,
+    String key,
+    String syncId,
+    String password,
+  ) async {
+    final base = normalizeActualUrl(url);
+    if (base == null) return 'Adresse invalide.';
+    final secret = key.trim().isEmpty ? _actualKey : key.trim();
+    if (secret.isEmpty) return 'Il manque la clé d\'API.';
+    final budget = syncId.trim();
+    if (budget.isEmpty) return 'Il manque l\'ID de synchronisation du budget.';
+    final pass = password.isEmpty ? _actualPassword : password;
+    try {
+      await ActualClient(base, secret, budget, password: pass).ping();
+    } on ActualException catch (e) {
+      return e.message;
+    } catch (_) {
+      return 'actual-http-api injoignable à cette adresse.';
+    }
+    await widget.prefs.setString('actual_url', base);
+    await widget.prefs.setString('actual_key', secret);
+    await widget.prefs.setString('actual_sync_id', budget);
+    await widget.prefs.setString('actual_password', pass);
     if (mounted) setState(() {});
     return null;
   }
@@ -572,6 +611,10 @@ class _NoxAppState extends State<NoxApp> with TrayListener {
                 spotifyClientId: widget.prefs.getString('spotify_client_id') ?? '',
                 onSpotifyLogin: _spotifyLogin,
                 onSpotifyLogout: _spotifyLogout,
+                actualUrl: _actualUrl,
+                actualSyncId: _actualSyncId,
+                actual: _actual,
+                onSaveActual: _saveActualSettings,
                 onRefresh: _refreshToday,
                 onClose: _closePanel,
                 onSaveSettings: _saveHaSettings,

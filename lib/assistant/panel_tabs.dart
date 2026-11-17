@@ -2,7 +2,9 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import 'actual_client.dart';
 import 'brief.dart';
+import 'budget.dart';
 import 'ha_client.dart';
 import 'ha_dashboard.dart';
 import 'home.dart';
@@ -54,6 +56,8 @@ mixin _LiveTab<T extends StatefulWidget, D> on State<T> {
       if (mounted) setState(() => error = e.message);
     } on VikunjaException catch (e) {
       if (mounted) setState(() => error = e.message);
+    } on ActualException catch (e) {
+      if (mounted) setState(() => error = e.message);
     } catch (_) {
       if (mounted) setState(() => error = unreachable);
     } finally {
@@ -72,8 +76,11 @@ mixin _LiveTab<T extends StatefulWidget, D> on State<T> {
     } on HaException catch (e) {
       if (mounted) setState(() => error = e.message);
       return;
+    } on ActualException catch (e) {
+      if (mounted) setState(() => error = e.message);
+      return;
     } catch (_) {
-      if (mounted) setState(() => error = 'Home Assistant injoignable');
+      if (mounted) setState(() => error = unreachable);
       return;
     }
     await refresh(quiet: true);
@@ -932,6 +939,348 @@ class _TrackingTabState extends State<TrackingTab> with _LiveTab<TrackingTab, Tr
               minHeight: 5,
               color: panelAccent,
               backgroundColor: panelBackground,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------- Budget
+
+class BudgetTab extends StatefulWidget {
+  const BudgetTab({super.key, required this.client, required this.memory, required this.now});
+
+  final ActualClient client;
+  final PanelMemory memory;
+  final DateTime now;
+
+  @override
+  State<BudgetTab> createState() => _BudgetTabState();
+}
+
+/// Operations listed in the "Budget" tab.
+const kBudgetOperations = 15;
+
+class _BudgetTabState extends State<BudgetTab> with _LiveTab<BudgetTab, Finances> {
+  PanelMemory get memory => widget.memory;
+
+  @override
+  Duration get every => const Duration(minutes: 2);
+
+  @override
+  String get unreachable => 'actual-http-api injoignable';
+
+  @override
+  Future<Finances> load() => widget.client.fetchFinances(widget.now);
+
+  final _amount = TextEditingController();
+  final _payee = TextEditingController();
+  String? _account;
+  String? _envelope;
+  String? _formError;
+  bool _adding = false;
+
+  @override
+  void dispose() {
+    _amount.dispose();
+    _payee.dispose();
+    super.dispose();
+  }
+
+  void _toggle(String key) => setState(() => memory.toggle(key));
+
+  Future<void> _add(Finances f) async {
+    final cents = parseEuros(_amount.text);
+    final account = _account ?? (f.onBudget.isEmpty ? null : f.onBudget.first.id);
+    if (cents == null) return setState(() => _formError = 'Montant invalide.');
+    if (account == null) return setState(() => _formError = 'Aucun compte dans le budget.');
+    setState(() {
+      _adding = true;
+      _formError = null;
+    });
+    await act(
+      () => widget.client.addExpense(
+        accountId: account,
+        cents: cents,
+        date: DateTime.now(),
+        payee: _payee.text,
+        categoryId: _envelope,
+      ),
+    );
+    if (!mounted) return;
+    setState(() {
+      _adding = false;
+      if (error == null) {
+        _amount.clear();
+        _payee.clear();
+        _envelope = null;
+      }
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return frame((f) {
+      final names = {for (final a in f.accounts) a.id: a.name};
+      final operations = f.operations.take(kBudgetOperations).toList();
+      return [
+        _summary(f),
+        _expenseForm(f),
+        _accounts(f),
+        if (f.month.groups.isEmpty) const PanelNote('Aucune enveloppe ce mois-ci.'),
+        for (final g in f.month.groups) _group(g),
+        PanelSection(
+          title: 'Dernières opérations',
+          collapsed: memory.isCollapsed('budget:operations'),
+          onToggle: () => _toggle('budget:operations'),
+          count: operations.length,
+          children: [
+            if (operations.isEmpty) const PanelNote('Aucune opération ces 30 derniers jours.'),
+            for (final o in operations)
+              _operation(o, f.onBudget.length > 1 ? names[o.accountId] : null),
+          ],
+        ),
+      ];
+    });
+  }
+
+  Widget _line(String label, int cents, {Color? color, bool bold = false}) => Padding(
+    padding: const EdgeInsets.symmetric(vertical: 2),
+    child: Row(
+      children: [
+        Expanded(
+          child: Text(label, style: TextStyle(color: bold ? panelText : panelMuted)),
+        ),
+        Text(
+          formatEuros(cents),
+          style: TextStyle(color: color, fontWeight: bold ? FontWeight.w700 : FontWeight.w500),
+        ),
+      ],
+    ),
+  );
+
+  Widget _summary(Finances f) {
+    final m = f.month;
+    final over = m.envelopes.where((e) => e.overspent).length;
+    return PanelSection(
+      title: monthTitle(m.month.isEmpty ? monthKey(widget.now) : m.month),
+      children: [
+        _line('Sur les comptes', f.total, bold: true),
+        _line('À budgéter', m.toBudget, color: m.toBudget < 0 ? panelError : null),
+        _line('Dépensé ce mois', m.spent),
+        if (m.income != 0) _line('Revenus du mois', m.income),
+        if (over > 0)
+          PanelNote(
+            over == 1 ? '1 enveloppe dans le rouge.' : '$over enveloppes dans le rouge.',
+            error: true,
+          ),
+      ],
+    );
+  }
+
+  Widget _expenseForm(Finances f) {
+    const key = 'budget:add';
+    final accounts = f.onBudget;
+    final account = accounts.any((a) => a.id == _account) ? _account : accounts.firstOrNull?.id;
+    final envelopes = f.month.envelopes.toList();
+    final envelope = envelopes.any((e) => e.id == _envelope) ? _envelope : null;
+    DropdownButton<String?> dropdown(
+      String? value,
+      List<DropdownMenuItem<String?>> items,
+      ValueChanged<String?> onChanged,
+    ) => DropdownButton<String?>(
+      value: value,
+      isExpanded: true,
+      isDense: true,
+      dropdownColor: panelCard,
+      style: const TextStyle(color: panelText, fontSize: 13),
+      iconEnabledColor: panelAccent,
+      underline: const SizedBox.shrink(),
+      onChanged: _adding ? null : onChanged,
+      items: items,
+    );
+    return PanelSection(
+      title: 'Nouvelle dépense',
+      collapsed: memory.isCollapsed(key),
+      onToggle: () => _toggle(key),
+      children: [
+        Row(
+          children: [
+            SizedBox(
+              width: 110,
+              child: TextField(
+                controller: _amount,
+                enabled: !_adding,
+                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                decoration: const InputDecoration(
+                  isDense: true,
+                  labelText: 'Montant',
+                  suffixText: '€',
+                ),
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: TextField(
+                controller: _payee,
+                enabled: !_adding,
+                onSubmitted: (_) => _add(f),
+                decoration: const InputDecoration(isDense: true, labelText: 'Bénéficiaire'),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 10),
+        Row(
+          children: [
+            Expanded(
+              child: dropdown(account, [
+                for (final a in accounts) DropdownMenuItem(value: a.id, child: Text(a.name)),
+              ], (v) => setState(() => _account = v)),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: dropdown(envelope, [
+                const DropdownMenuItem(value: null, child: Text('Sans enveloppe')),
+                for (final e in envelopes) DropdownMenuItem(value: e.id, child: Text(e.name)),
+              ], (v) => setState(() => _envelope = v)),
+            ),
+          ],
+        ),
+        if (_formError != null) PanelNote(_formError!, error: true),
+        Align(
+          alignment: Alignment.centerRight,
+          child: FilledButton(
+            onPressed: _adding ? null : () => _add(f),
+            child: Text(_adding ? 'Ajout…' : 'Ajouter'),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _accounts(Finances f) {
+    const key = 'budget:accounts';
+    return PanelSection(
+      title: 'Comptes',
+      collapsed: memory.isCollapsed(key),
+      onToggle: () => _toggle(key),
+      count: f.accounts.length,
+      children: [
+        if (f.accounts.isEmpty) const PanelNote('Aucun compte ouvert.'),
+        for (final a in f.onBudget)
+          _line(a.name, a.balance, color: a.balance < 0 ? panelError : null),
+        if (f.offBudget.isNotEmpty) ...[
+          const Padding(
+            padding: EdgeInsets.only(top: 6, bottom: 2),
+            child: Text('Hors budget', style: TextStyle(color: panelMuted, fontSize: 11)),
+          ),
+          for (final a in f.offBudget) _line(a.name, a.balance),
+        ],
+      ],
+    );
+  }
+
+  Widget _group(EnvelopeGroup g) {
+    final key = 'budget:group:${g.name}';
+    return PanelSection(
+      title: g.name,
+      collapsed: memory.isCollapsed(key),
+      onToggle: () => _toggle(key),
+      count: g.envelopes.length,
+      trailing: Padding(
+        padding: const EdgeInsets.only(right: 6),
+        child: Text(
+          formatEuros(g.balance),
+          style: TextStyle(color: g.balance < 0 ? panelError : panelMuted, fontSize: 12),
+        ),
+      ),
+      children: [for (final e in g.envelopes) _envelopeRow(e)],
+    );
+  }
+
+  Widget _envelopeRow(Envelope e) {
+    final color = e.overspent
+        ? panelError
+        : e.low
+        ? panelAccent
+        : panelText;
+    final ratio = e.budgeted > 0
+        ? (e.spent / e.budgeted).clamp(0.0, 1.0)
+        : (e.spent > 0 ? 1.0 : 0.0);
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(child: Text(e.name, maxLines: 1, overflow: TextOverflow.ellipsis)),
+              Text(
+                formatEuros(e.balance),
+                style: TextStyle(color: color, fontWeight: FontWeight.w600),
+              ),
+            ],
+          ),
+          const SizedBox(height: 3),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(3),
+            child: LinearProgressIndicator(
+              value: ratio,
+              minHeight: 4,
+              color: e.overspent ? panelError : panelAccent,
+              backgroundColor: panelBackground,
+            ),
+          ),
+          if (e.budgeted > 0 || e.spent != 0)
+            Padding(
+              padding: const EdgeInsets.only(top: 2),
+              child: Text(
+                '${formatEuros(e.spent)} dépensés sur ${formatEuros(e.budgeted)}',
+                style: const TextStyle(color: panelMuted, fontSize: 11),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _operation(Operation o, String? account) {
+    final details = [?o.category, ?account, ?o.notes].join(' · ');
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 3),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 44,
+            child: Text(
+              '${o.date.day.toString().padLeft(2, '0')}/${o.date.month.toString().padLeft(2, '0')}',
+              style: const TextStyle(color: panelMuted, fontSize: 12),
+            ),
+          ),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(o.payee, maxLines: 1, overflow: TextOverflow.ellipsis),
+                if (details.isNotEmpty)
+                  Text(
+                    details,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(color: panelMuted, fontSize: 11),
+                  ),
+              ],
+            ),
+          ),
+          Text(
+            formatEuros(o.amount, sign: true),
+            style: TextStyle(
+              color: o.amount > 0 ? panelAccent : panelText,
+              fontWeight: FontWeight.w600,
             ),
           ),
         ],
