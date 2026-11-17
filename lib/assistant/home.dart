@@ -50,11 +50,19 @@ class HomeDevice {
     this.brightness,
     this.temperature,
     this.target,
+    this.unit,
+    this.deviceClass,
   });
 
   final String id;
   final String name;
   final String state;
+
+  /// Sensors: "°C", "%", "W"…
+  final String? unit;
+
+  /// "temperature", "door", "motion"…
+  final String? deviceClass;
 
   /// Lights: 0 to 255.
   final int? brightness;
@@ -69,9 +77,23 @@ class HomeDevice {
 
   /// Lights, switches, fans… switched on and off with a tap.
   bool get toggles => _toggleDomains.contains(domain);
+
+  /// Same device under another name (the one a dashboard gives it).
+  HomeDevice named(String? other) => other == null
+      ? this
+      : HomeDevice(
+          id: id,
+          name: other,
+          state: state,
+          brightness: brightness,
+          temperature: temperature,
+          target: target,
+          unit: unit,
+          deviceClass: deviceClass,
+        );
 }
 
-const _toggleDomains = {'light', 'switch', 'fan', 'input_boolean'};
+const _toggleDomains = {'light', 'switch', 'fan', 'input_boolean', 'automation'};
 
 /// Domains shown in the "Maison" tab, in this order.
 const homeDomains = [
@@ -154,22 +176,48 @@ Map<String, List<HomeDevice>> parseHomeDevices(Object? states) {
     final attrs = s['attributes'] is Map ? s['attributes'] as Map : const {};
     // Groups made by integrations, hidden ones…
     if (attrs['hidden'] == true) continue;
-    final brightness = attrs['brightness'];
-    (byDomain[domain] ??= []).add(
-      HomeDevice(
-        id: id,
-        name: _name(s, id),
-        state: state,
-        brightness: brightness is num ? brightness.round() : null,
-        temperature: _double(attrs['current_temperature']),
-        target: _double(attrs['temperature']),
-      ),
-    );
+    (byDomain[domain] ??= []).add(_device(s, id, state, attrs));
   }
   for (final list in byDomain.values) {
     list.sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
   }
   return {for (final d in homeDomains) d: ?byDomain[d]};
+}
+
+HomeDevice _device(Map s, String id, String state, Map attrs) {
+  final brightness = attrs['brightness'];
+  return HomeDevice(
+    id: id,
+    name: _name(s, id),
+    state: state,
+    brightness: brightness is num ? brightness.round() : null,
+    temperature: _double(attrs['current_temperature']),
+    target: _double(attrs['temperature']),
+    unit: _string(attrs['unit_of_measurement']),
+    deviceClass: _string(attrs['device_class']),
+  );
+}
+
+/// Every entity in the answer of `/api/states`, by entity_id.
+Map<String, HomeDevice> parseEntities(Object? states) {
+  final byId = <String, HomeDevice>{};
+  if (states is! List) return byId;
+  for (final s in states) {
+    if (s is! Map) continue;
+    final id = s['entity_id'];
+    final state = s['state'];
+    if (id is! String || state is! String || !id.contains('.')) continue;
+    final attrs = s['attributes'] is Map ? s['attributes'] as Map : const {};
+    byId[id] = _device(s, id, state, attrs);
+  }
+  return byId;
+}
+
+String _number(String raw) {
+  final v = double.tryParse(raw);
+  if (v == null) return raw;
+  final text = v.truncateToDouble() == v ? v.toStringAsFixed(0) : v.toStringAsFixed(1);
+  return text.replaceAll('.', ',');
 }
 
 /// "Allumée", "Ouvert", "19,5 °C → 20 °C"…
@@ -203,9 +251,44 @@ String deviceLabel(HomeDevice d) {
       return [mode, ...parts].join(' · ');
     case 'scene':
     case 'script':
+    case 'button':
       return '';
-    default:
+    case 'sensor':
+    case 'input_number':
+    case 'number':
+      return d.unit == null ? _number(d.state) : '${_number(d.state)} ${d.unit}';
+    case 'binary_sensor':
+      final on = d.state == 'on';
+      return switch (d.deviceClass) {
+        'door' || 'window' || 'opening' || 'garage_door' => on ? 'Ouvert' : 'Fermé',
+        'motion' || 'occupancy' || 'presence' => on ? 'Présence' : 'Personne',
+        'moisture' => on ? 'Humide' : 'Sec',
+        'smoke' || 'gas' || 'problem' || 'safety' => on ? 'Alerte' : 'OK',
+        'battery' => on ? 'Faible' : 'OK',
+        'connectivity' => on ? 'Connecté' : 'Déconnecté',
+        'lock' => on ? 'Déverrouillé' : 'Verrouillé',
+        _ => on ? 'Actif' : 'Inactif',
+      };
+    case 'media_player':
+      return const {
+            'playing': 'Lecture',
+            'paused': 'En pause',
+            'idle': 'Inactif',
+            'off': 'Éteint',
+            'on': 'Allumé',
+          }[d.state] ??
+          d.state;
+    case 'person':
+    case 'device_tracker':
+      return const {'home': 'À la maison', 'not_home': 'Absent'}[d.state] ?? d.state;
+    case 'switch':
+    case 'fan':
+    case 'input_boolean':
+    case 'automation':
       return d.state == 'on' ? 'Allumé' : 'Éteint';
+    default:
+      if (d.state == 'on' || d.state == 'off') return d.state == 'on' ? 'Allumé' : 'Éteint';
+      return d.unit == null ? _number(d.state) : '${_number(d.state)} ${d.unit}';
   }
 }
 

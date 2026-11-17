@@ -43,6 +43,7 @@ class TodayPanel extends StatefulWidget {
     required this.onClose,
     required this.onSaveSettings,
     required this.onSaveVikunja,
+    this.memory,
   });
 
   final DateTime now;
@@ -78,11 +79,15 @@ class TodayPanel extends StatefulWidget {
   final SaveServer onSaveSettings;
   final SaveServer onSaveVikunja;
 
+  /// Folded sections and chosen dashboard; kept in memory only when null.
+  final PanelMemory? memory;
+
   @override
   State<TodayPanel> createState() => _TodayPanelState();
 }
 
 class _TodayPanelState extends State<TodayPanel> {
+  late final PanelMemory _memory = widget.memory ?? PanelMemory();
   late bool _settings = !widget.configured && widget.vikunja == null && widget.spotify == null;
 
   /// Bumped by "Actualiser": rebuilds the live tabs, which reload.
@@ -199,9 +204,9 @@ class _TodayPanelState extends State<TodayPanel> {
         client == null && widget.spotify == null
             ? missing('Home Assistant ni à Spotify')
             : keyed(MusicTab(client: client, spotify: widget.spotify)),
-        live((c) => HomeTab(client: c)),
-        live((c) => AgendaTab(client: c, now: widget.now, brief: widget.brief)),
-        live((c) => TasksTab(client: c)),
+        live((c) => HomeTab(client: c, memory: _memory)),
+        live((c) => AgendaTab(client: c, memory: _memory, now: widget.now, brief: widget.brief)),
+        live((c) => TasksTab(client: c, memory: _memory)),
       ],
     );
   }

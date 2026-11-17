@@ -1,7 +1,9 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
 import 'brief.dart';
+import 'ha_dashboard.dart';
 import 'home.dart';
 import 'today.dart';
 
@@ -77,6 +79,72 @@ class HaClient {
   /// Calls a Home Assistant service, e.g. `light.toggle`.
   Future<void> callService(String domain, String service, Map<String, Object?> data) async {
     await _request('POST', _uri('/api/services/$domain/$service'), body: data);
+  }
+
+  /// Opens Home Assistant's WebSocket API (the only one that knows the
+  /// dashboards), authenticates, runs [commands] in order and returns their
+  /// results. A command that fails gives null.
+  Future<List<Object?>> _socket(List<Map<String, Object?>> commands) async {
+    final base = Uri.parse(baseUrl);
+    final uri = base.replace(
+      scheme: base.scheme == 'https' ? 'wss' : 'ws',
+      path: '${base.path}/api/websocket',
+    );
+    final WebSocket socket;
+    try {
+      socket = await WebSocket.connect(uri.toString()).timeout(const Duration(seconds: 10));
+    } catch (_) {
+      throw const HaException('Home Assistant injoignable');
+    }
+    final results = List<Object?>.filled(commands.length, null);
+    try {
+      final messages = socket
+          .map((m) => m is String ? jsonDecode(m) : null)
+          .timeout(const Duration(seconds: 20));
+      var next = 0;
+      await for (final m in messages) {
+        if (m is! Map) continue;
+        switch (m['type']) {
+          case 'auth_required':
+            socket.add(jsonEncode({'type': 'auth', 'access_token': token}));
+          case 'auth_invalid':
+            throw const HaException('Jeton refusé par Home Assistant.');
+          case 'auth_ok':
+            for (var i = 0; i < commands.length; i++) {
+              socket.add(jsonEncode({'id': i + 1, ...commands[i]}));
+            }
+          case 'result':
+            final id = m['id'];
+            if (id is int && id >= 1 && id <= commands.length) {
+              if (m['success'] == true) results[id - 1] = m['result'];
+              next++;
+            }
+        }
+        if (next == commands.length) break;
+      }
+    } on TimeoutException {
+      throw const HaException('Home Assistant ne répond pas.');
+    } finally {
+      unawaited(socket.close());
+    }
+    return results;
+  }
+
+  /// The dashboards of Home Assistant, the default one first.
+  Future<List<HaDashboardInfo>> fetchDashboards() async {
+    final results = await _socket([
+      {'type': 'lovelace/dashboards/list'},
+    ]);
+    return parseDashboards(results.first);
+  }
+
+  /// The views of a dashboard ([urlPath] "lovelace" for the default one).
+  /// Empty when Home Assistant generates it itself.
+  Future<List<DashboardView>> fetchDashboard(String urlPath) async {
+    final results = await _socket([
+      {'type': 'lovelace/config', 'url_path': urlPath == 'lovelace' ? null : urlPath},
+    ]);
+    return parseDashboardConfig(results.first);
   }
 
   /// Address of a picture given by Home Assistant (album cover…).

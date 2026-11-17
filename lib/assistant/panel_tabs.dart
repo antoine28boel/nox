@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import 'brief.dart';
 import 'ha_client.dart';
+import 'ha_dashboard.dart';
 import 'home.dart';
 import 'panel_style.dart';
 import 'spotify_client.dart';
@@ -252,136 +253,359 @@ class _MusicTabState extends State<MusicTab> with _LiveTab<MusicTab, List<MediaP
 // ---------------------------------------------------------------- Maison
 
 class HomeTab extends StatefulWidget {
-  const HomeTab({super.key, required this.client});
+  const HomeTab({super.key, required this.client, required this.memory});
 
   final HaClient client;
+  final PanelMemory memory;
 
   @override
   State<HomeTab> createState() => _HomeTabState();
 }
 
-class _HomeTabState extends State<HomeTab> with _LiveTab<HomeTab, Map<String, List<HomeDevice>>> {
+/// Every entity by id, and the devices of the house by domain.
+typedef _HomeData = ({Map<String, HomeDevice> byId, Map<String, List<HomeDevice>> byDomain});
+
+class _HomeTabState extends State<HomeTab> with _LiveTab<HomeTab, _HomeData> {
   HaClient get client => widget.client;
+  PanelMemory get memory => widget.memory;
+
   @override
   Duration get every => const Duration(seconds: 10);
 
+  List<HaDashboardInfo>? _dashboards;
+
+  /// Views of the chosen dashboard; null while loading or without one.
+  List<DashboardView>? _views;
+  String? _dashboardNote;
+  int _view = 0;
+
   @override
-  Future<Map<String, List<HomeDevice>>> load() async => parseHomeDevices(await client.states());
+  void initState() {
+    super.initState();
+    _loadDashboards();
+    _loadDashboard();
+  }
+
+  @override
+  Future<_HomeData> load() async {
+    final states = await client.states();
+    return (byId: parseEntities(states), byDomain: parseHomeDevices(states));
+  }
+
+  Future<void> _loadDashboards() async {
+    try {
+      final list = await client.fetchDashboards();
+      if (mounted) setState(() => _dashboards = list);
+    } catch (_) {
+      // The picker then only offers "every device".
+    }
+  }
+
+  Future<void> _loadDashboard() async {
+    final path = memory.dashboard;
+    setState(() {
+      _views = null;
+      _dashboardNote = null;
+      _view = 0;
+    });
+    if (path.isEmpty) return;
+    try {
+      final views = await client.fetchDashboard(path);
+      if (!mounted || memory.dashboard != path) return;
+      setState(() {
+        _views = views;
+        if (views.isEmpty) {
+          _dashboardNote =
+              'Ce tableau de bord est généré par Home Assistant : Nox montre tous les appareils.';
+        }
+      });
+    } on HaException catch (e) {
+      if (mounted) setState(() => _dashboardNote = e.message);
+    } catch (_) {
+      if (mounted) setState(() => _dashboardNote = 'Tableau de bord illisible.');
+    }
+  }
+
+  void _pick(String? path) {
+    if (path == null || path == memory.dashboard) return;
+    memory.dashboard = path;
+    _loadDashboard();
+  }
 
   Future<void> _call(HomeDevice d, String service, [Map<String, Object?> extra = const {}]) =>
       act(() => client.callService(d.domain, service, {'entity_id': d.id, ...extra}));
 
   @override
   Widget build(BuildContext context) {
-    return frame(
-      (groups) => [
-        if (groups.isEmpty) const PanelNote('Aucun appareil trouvé dans Home Assistant.'),
-        for (final entry in groups.entries)
-          PanelSection(
-            title: homeDomainLabels[entry.key] ?? entry.key,
+    return frame((data) {
+      final views = _views;
+      final chosen = memory.dashboard;
+      return [
+        _picker(),
+        if (_dashboardNote != null) PanelNote(_dashboardNote!),
+        if (chosen.isNotEmpty && views == null && _dashboardNote == null)
+          const Padding(
+            padding: EdgeInsets.all(24),
+            child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
+          )
+        else if (views != null && views.isNotEmpty)
+          ..._dashboard(views, data.byId)
+        else ...[
+          if (data.byDomain.isEmpty) const PanelNote('Aucun appareil trouvé dans Home Assistant.'),
+          for (final entry in data.byDomain.entries)
+            _group('home::${entry.key}', homeDomainLabels[entry.key] ?? entry.key, entry.value),
+        ],
+      ];
+    });
+  }
+
+  Widget _picker() {
+    final dashboards = _dashboards ?? const <HaDashboardInfo>[];
+    final chosen = memory.dashboard;
+    final known = chosen.isEmpty || dashboards.any((d) => d.urlPath == chosen);
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 6),
+      child: Row(
+        children: [
+          const Icon(Icons.dashboard_rounded, size: 16, color: panelMuted),
+          const SizedBox(width: 8),
+          Expanded(
+            child: DropdownButtonHideUnderline(
+              child: DropdownButton<String>(
+                value: chosen,
+                isExpanded: true,
+                isDense: true,
+                dropdownColor: panelCard,
+                style: const TextStyle(color: panelText, fontSize: 13),
+                iconEnabledColor: panelAccent,
+                onChanged: _pick,
+                items: [
+                  const DropdownMenuItem(value: '', child: Text('Tous les appareils')),
+                  for (final d in dashboards)
+                    DropdownMenuItem(value: d.urlPath, child: Text(d.title)),
+                  if (!known) DropdownMenuItem(value: chosen, child: Text(chosen)),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  List<Widget> _dashboard(List<DashboardView> views, Map<String, HomeDevice> byId) {
+    final view = views[_view.clamp(0, views.length - 1)];
+    final key = 'home:${memory.dashboard}:${view.title}';
+    return [
+      if (views.length > 1)
+        SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          padding: const EdgeInsets.only(bottom: 8),
+          child: Row(
             children: [
-              if (entry.key == 'scene' || entry.key == 'script')
-                Wrap(
-                  spacing: 6,
-                  runSpacing: 6,
-                  children: [
-                    for (final d in entry.value)
-                      ActionChip(
-                        label: Text(d.name),
-                        onPressed: d.available ? () => _call(d, 'turn_on') : null,
-                      ),
-                  ],
-                )
-              else
-                for (final d in entry.value) _device(d),
+              for (var i = 0; i < views.length; i++)
+                Padding(
+                  padding: const EdgeInsets.only(right: 6),
+                  child: ChoiceChip(
+                    label: Text(views[i].title),
+                    selected: views[i] == view,
+                    onSelected: (_) => setState(() => _view = i),
+                  ),
+                ),
             ],
           ),
+        ),
+      for (var i = 0; i < view.groups.length; i++)
+        _group(
+          '$key:${view.groups[i].title ?? i}',
+          view.groups[i].title ?? (i == 0 ? view.title : 'Autres'),
+          [
+            for (final e in view.groups[i].entities)
+              if (byId[e.id] case final d?) d.named(e.name),
+          ],
+        ),
+    ];
+  }
+
+  Widget _group(String key, String title, List<HomeDevice> devices) {
+    if (devices.isEmpty) return const SizedBox.shrink();
+    return PanelSection(
+      title: title,
+      collapsed: memory.isCollapsed(key),
+      onToggle: () => setState(() => memory.toggle(key)),
+      count: devices.length,
+      children: [
+        LayoutBuilder(
+          builder: (context, box) {
+            const gap = 8.0;
+            final half = (box.maxWidth - gap) / 2;
+            return Wrap(
+              spacing: gap,
+              runSpacing: gap,
+              children: [
+                for (final d in devices)
+                  SizedBox(width: d.domain == 'climate' ? box.maxWidth : half, child: _tile(d)),
+              ],
+            );
+          },
+        ),
       ],
     );
   }
 
-  Widget _device(HomeDevice d) {
+  /// What a tap on the tile does, if anything.
+  VoidCallback? _tap(HomeDevice d) {
+    if (!d.available) return null;
+    if (d.toggles) return () => _call(d, 'toggle');
+    return switch (d.domain) {
+      'scene' || 'script' => () => _call(d, 'turn_on'),
+      'button' || 'input_button' => () => _call(d, 'press'),
+      'cover' => () => _call(d, 'toggle'),
+      'lock' => () => _call(d, d.state == 'locked' ? 'unlock' : 'lock'),
+      'media_player' => () => _call(d, 'media_play_pause'),
+      _ => null,
+    };
+  }
+
+  Widget _tile(HomeDevice d) {
+    final active = d.available && (d.on || d.state == 'playing' || d.state == 'home');
     final label = deviceLabel(d);
-    Widget? control;
-    if (d.toggles) {
-      control = Switch(
-        value: d.state == 'on',
-        onChanged: d.available ? (v) => _call(d, v ? 'turn_on' : 'turn_off') : null,
-      );
-    } else if (d.domain == 'cover') {
-      control = Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          IconButton(
-            tooltip: 'Ouvrir',
-            onPressed: d.available ? () => _call(d, 'open_cover') : null,
-            icon: const Icon(Icons.keyboard_arrow_up_rounded),
-          ),
-          IconButton(
-            tooltip: 'Stop',
-            onPressed: d.available ? () => _call(d, 'stop_cover') : null,
-            icon: const Icon(Icons.stop_rounded, size: 18),
-          ),
-          IconButton(
-            tooltip: 'Fermer',
-            onPressed: d.available ? () => _call(d, 'close_cover') : null,
-            icon: const Icon(Icons.keyboard_arrow_down_rounded),
-          ),
-        ],
-      );
-    } else if (d.domain == 'climate' && d.target != null) {
-      control = Row(
+    final onTap = _tap(d);
+    Widget? controls;
+    if (d.domain == 'climate' && d.target != null && d.available) {
+      controls = Row(
         mainAxisSize: MainAxisSize.min,
         children: [
           IconButton(
             tooltip: '−0,5 °C',
-            onPressed: d.available
-                ? () => _call(d, 'set_temperature', {'temperature': d.target! - 0.5})
-                : null,
-            icon: const Icon(Icons.remove_rounded),
+            visualDensity: VisualDensity.compact,
+            onPressed: () => _call(d, 'set_temperature', {'temperature': d.target! - 0.5}),
+            icon: const Icon(Icons.remove_rounded, size: 18),
           ),
           IconButton(
             tooltip: '+0,5 °C',
-            onPressed: d.available
-                ? () => _call(d, 'set_temperature', {'temperature': d.target! + 0.5})
-                : null,
-            icon: const Icon(Icons.add_rounded),
+            visualDensity: VisualDensity.compact,
+            onPressed: () => _call(d, 'set_temperature', {'temperature': d.target! + 0.5}),
+            icon: const Icon(Icons.add_rounded, size: 18),
           ),
         ],
-      );
-    } else if (d.domain == 'lock') {
-      control = TextButton(
-        onPressed: d.available ? () => _call(d, d.state == 'locked' ? 'unlock' : 'lock') : null,
-        child: Text(d.state == 'locked' ? 'Ouvrir' : 'Verrouiller'),
       );
     }
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 1),
-      child: Row(
-        children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(d.name, maxLines: 1, overflow: TextOverflow.ellipsis),
-                if (label.isNotEmpty)
-                  Text(label, style: const TextStyle(color: panelMuted, fontSize: 12)),
-              ],
-            ),
+    return Material(
+      color: active ? panelAccent.withValues(alpha: 0.16) : panelTile,
+      borderRadius: BorderRadius.circular(10),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(10, 9, 6, 9),
+          child: Row(
+            children: [
+              Icon(
+                deviceIcon(d),
+                size: 20,
+                color: !d.available
+                    ? panelMuted.withValues(alpha: 0.5)
+                    : active
+                    ? panelAccent
+                    : panelMuted,
+              ),
+              const SizedBox(width: 9),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      d.name,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+                    ),
+                    if (label.isNotEmpty)
+                      Text(
+                        label,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(color: active ? panelText : panelMuted, fontSize: 11),
+                      ),
+                  ],
+                ),
+              ),
+              ?controls,
+            ],
           ),
-          ?control,
-        ],
+        ),
       ),
     );
+  }
+}
+
+/// The icon of a device's tile.
+IconData deviceIcon(HomeDevice d) {
+  switch (d.domain) {
+    case 'light':
+      return d.on ? Icons.lightbulb_rounded : Icons.lightbulb_outline_rounded;
+    case 'switch':
+    case 'input_boolean':
+      return Icons.power_settings_new_rounded;
+    case 'fan':
+      return Icons.air_rounded;
+    case 'cover':
+      return Icons.window_rounded;
+    case 'climate':
+      return Icons.thermostat_rounded;
+    case 'lock':
+      return d.state == 'locked' ? Icons.lock_rounded : Icons.lock_open_rounded;
+    case 'scene':
+      return Icons.palette_rounded;
+    case 'script':
+      return Icons.play_arrow_rounded;
+    case 'button':
+    case 'input_button':
+      return Icons.touch_app_rounded;
+    case 'automation':
+      return Icons.auto_mode_rounded;
+    case 'media_player':
+      return Icons.speaker_rounded;
+    case 'person':
+    case 'device_tracker':
+      return Icons.person_rounded;
+    case 'binary_sensor':
+      return switch (d.deviceClass) {
+        'door' || 'garage_door' || 'opening' => Icons.sensor_door_rounded,
+        'window' => Icons.window_rounded,
+        'motion' || 'occupancy' || 'presence' => Icons.directions_walk_rounded,
+        'moisture' => Icons.water_drop_rounded,
+        'smoke' || 'gas' || 'problem' || 'safety' => Icons.warning_amber_rounded,
+        _ => Icons.sensors_rounded,
+      };
+    case 'sensor':
+      return switch (d.deviceClass) {
+        'temperature' => Icons.thermostat_rounded,
+        'humidity' => Icons.water_drop_rounded,
+        'power' || 'energy' || 'current' || 'voltage' => Icons.bolt_rounded,
+        'battery' => Icons.battery_std_rounded,
+        'illuminance' => Icons.wb_sunny_rounded,
+        _ => Icons.sensors_rounded,
+      };
+    default:
+      return Icons.circle_outlined;
   }
 }
 
 // ---------------------------------------------------------------- Agenda
 
 class AgendaTab extends StatefulWidget {
-  const AgendaTab({super.key, required this.client, required this.now, this.brief});
+  const AgendaTab({
+    super.key,
+    required this.client,
+    required this.memory,
+    required this.now,
+    this.brief,
+  });
 
   final HaClient client;
+  final PanelMemory memory;
   final DateTime now;
 
   /// Today's brief, shown above the agenda.
@@ -399,6 +623,24 @@ class _AgendaTabState extends State<AgendaTab> with _LiveTab<AgendaTab, List<Age
 
   DateTime get _start => DateTime(widget.now.year, widget.now.month, widget.now.day);
 
+  PanelMemory get memory => widget.memory;
+
+  static const _brief = 'agenda:brief';
+
+  String _dayKey(DateTime day) =>
+      'agenda:${day.year}-${day.month.toString().padLeft(2, '0')}-'
+      '${day.day.toString().padLeft(2, '0')}';
+
+  @override
+  void initState() {
+    super.initState();
+    // Days that are over keep no folded state.
+    final today = _dayKey(_start);
+    memory.prune('agenda:2', (key) => key.compareTo(today) >= 0);
+  }
+
+  void _toggle(String key) => setState(() => memory.toggle(key));
+
   @override
   Future<List<AgendaEvent>> load() =>
       client.fetchEvents(_start, DateTime(_start.year, _start.month, _start.day + kAgendaDays));
@@ -411,6 +653,8 @@ class _AgendaTabState extends State<AgendaTab> with _LiveTab<AgendaTab, List<Age
         if (widget.brief case final brief?)
           PanelSection(
             title: 'Brief',
+            collapsed: memory.isCollapsed(_brief),
+            onToggle: () => _toggle(_brief),
             children: [
               Text(brief.text, style: const TextStyle(height: 1.4)),
               if (brief.byAi)
@@ -427,6 +671,9 @@ class _AgendaTabState extends State<AgendaTab> with _LiveTab<AgendaTab, List<Age
         for (final day in days.entries)
           PanelSection(
             title: _dayTitle(day.key),
+            collapsed: memory.isCollapsed(_dayKey(day.key)),
+            onToggle: () => _toggle(_dayKey(day.key)),
+            count: day.value.length,
             children: [
               for (final e in day.value)
                 Padding(
@@ -459,9 +706,10 @@ class _AgendaTabState extends State<AgendaTab> with _LiveTab<AgendaTab, List<Age
 // ---------------------------------------------------------------- Tâches
 
 class TasksTab extends StatefulWidget {
-  const TasksTab({super.key, required this.client});
+  const TasksTab({super.key, required this.client, required this.memory});
 
   final HaClient client;
+  final PanelMemory memory;
 
   @override
   State<TasksTab> createState() => _TasksTabState();
@@ -524,8 +772,12 @@ class _TasksTabState extends State<TasksTab> with _LiveTab<TasksTab, List<TodoLi
       for (final i in list.items)
         if (_showDone || !i.done) i,
     ];
+    final key = 'tasks:${list.id}';
     return PanelSection(
       title: list.name,
+      collapsed: widget.memory.isCollapsed(key),
+      onToggle: () => setState(() => widget.memory.toggle(key)),
+      count: list.items.where((i) => !i.done).length,
       children: [
         if (items.isEmpty) const PanelNote('Rien à faire.'),
         for (final item in items)

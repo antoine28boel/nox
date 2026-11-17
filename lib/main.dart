@@ -11,6 +11,7 @@ import 'package:window_manager/window_manager.dart';
 
 import 'assistant/brief.dart';
 import 'assistant/ha_client.dart';
+import 'assistant/panel_style.dart';
 import 'assistant/today.dart';
 import 'assistant/spotify_client.dart';
 import 'assistant/today_panel.dart';
@@ -89,6 +90,12 @@ class NoxApp extends StatefulWidget {
 
 class _NoxAppState extends State<NoxApp> with TrayListener {
   bool _startup = false;
+
+  /// Folded sections of the panel and the dashboard of the "Maison" tab.
+  late final _panelMemory = PanelMemory(
+    read: widget.prefs.getString,
+    write: (key, value) => widget.prefs.setString(key, value),
+  );
 
   /// An update Nox is offering, waiting for a yes or a no.
   UpdateInfo? _update;
@@ -568,6 +575,7 @@ class _NoxAppState extends State<NoxApp> with TrayListener {
                 onRefresh: _refreshToday,
                 onClose: _closePanel,
                 onSaveSettings: _saveHaSettings,
+                memory: _panelMemory,
               )
             : NoxView(
                 brain: widget.brain,
