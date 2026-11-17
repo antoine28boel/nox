@@ -26,6 +26,8 @@ class TodayPanel extends StatefulWidget {
     required this.onRefresh,
     required this.onClose,
     required this.onSaveSettings,
+    this.tasksCollapsed = false,
+    this.onTasksCollapsedChanged,
   });
 
   final DateTime now;
@@ -50,6 +52,10 @@ class TodayPanel extends StatefulWidget {
   /// Returns an error message, or null when the connection works.
   final Future<String?> Function(String url, String token) onSaveSettings;
 
+  /// Whether the task list starts folded (remembered between openings).
+  final bool tasksCollapsed;
+  final ValueChanged<bool>? onTasksCollapsedChanged;
+
   @override
   State<TodayPanel> createState() => _TodayPanelState();
 }
@@ -60,6 +66,12 @@ class _TodayPanelState extends State<TodayPanel> {
   final _token = TextEditingController();
   bool _saving = false;
   String? _error;
+  late bool _tasksCollapsed = widget.tasksCollapsed;
+
+  void _toggleTasks() {
+    setState(() => _tasksCollapsed = !_tasksCollapsed);
+    widget.onTasksCollapsedChanged?.call(_tasksCollapsed);
+  }
 
   @override
   void dispose() {
@@ -168,15 +180,21 @@ class _TodayPanelState extends State<TodayPanel> {
             if (data.events.isEmpty) const Text('Rien de prévu.', style: TextStyle(color: _muted)),
             for (final e in data.events) _EventRow(event: e),
           ]),
-          _Section(title: 'Tâches', children: [
-            if (data.tasks.isEmpty)
-              const Text('Aucune tâche en attente.', style: TextStyle(color: _muted)),
-            for (final t in data.tasks)
-              Padding(
-                padding: const EdgeInsets.symmetric(vertical: 2),
-                child: Text('•  $t'),
-              ),
-          ]),
+          _Section(
+            title: 'Tâches',
+            collapsed: _tasksCollapsed,
+            onToggle: _toggleTasks,
+            count: data.tasks.length,
+            children: [
+              if (data.tasks.isEmpty)
+                const Text('Aucune tâche en attente.', style: TextStyle(color: _muted)),
+              for (final t in data.tasks)
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 2),
+                  child: Text('•  $t'),
+                ),
+            ],
+          ),
         ],
       ],
     );
@@ -248,27 +266,63 @@ class _HeaderButton extends StatelessWidget {
 }
 
 class _Section extends StatelessWidget {
-  const _Section({required this.title, required this.children});
+  const _Section({
+    required this.title,
+    required this.children,
+    this.collapsed = false,
+    this.onToggle,
+    this.count,
+  });
 
   final String title;
   final List<Widget> children;
 
+  /// Only used when [onToggle] is set: the section folds on a tap on its title.
+  final bool collapsed;
+  final VoidCallback? onToggle;
+
+  /// Shown next to the title while folded.
+  final int? count;
+
   @override
   Widget build(BuildContext context) {
+    final foldable = onToggle != null;
+    const titleStyle = TextStyle(
+        color: _accent, fontSize: 11, fontWeight: FontWeight.w700, letterSpacing: 1);
+    Widget heading = Text(title.toUpperCase(), style: titleStyle);
+    if (foldable) {
+      heading = InkWell(
+        onTap: onToggle,
+        borderRadius: BorderRadius.circular(6),
+        child: Row(
+          children: [
+            Expanded(
+              child: Text(
+                collapsed && count != null
+                    ? '${title.toUpperCase()}  ($count)'
+                    : title.toUpperCase(),
+                style: titleStyle,
+              ),
+            ),
+            Icon(collapsed ? Icons.chevron_right : Icons.expand_more,
+                size: 18, color: _accent),
+          ],
+        ),
+      );
+    }
+    final open = !foldable || !collapsed;
     return Container(
       margin: const EdgeInsets.only(bottom: 10),
-      padding: const EdgeInsets.fromLTRB(14, 10, 14, 12),
+      padding: EdgeInsets.fromLTRB(14, 10, 14, open ? 12 : 10),
       decoration: BoxDecoration(color: _card, borderRadius: BorderRadius.circular(12)),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Padding(
-            padding: const EdgeInsets.only(bottom: 6),
-            child: Text(title.toUpperCase(),
-                style: const TextStyle(
-                    color: _accent, fontSize: 11, fontWeight: FontWeight.w700, letterSpacing: 1)),
+            padding: EdgeInsets.only(bottom: open ? 6 : 0),
+            child: heading,
           ),
-          ...children,
+          if (open) ...children,
         ],
       ),
     );
