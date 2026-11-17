@@ -503,6 +503,8 @@ class _NoxAppState extends State<NoxApp> with TrayListener {
                 onSaveSettings: _saveHaSettings,
                 tasksCollapsed: widget.prefs.getBool('tasks_collapsed') ?? false,
                 onTasksCollapsedChanged: (c) => widget.prefs.setBool('tasks_collapsed', c),
+                agendaCollapsed: widget.prefs.getBool('agenda_collapsed') ?? false,
+                onAgendaCollapsedChanged: (c) => widget.prefs.setBool('agenda_collapsed', c),
               )
             : NoxView(
                 brain: widget.brain,

@@ -28,6 +28,8 @@ class TodayPanel extends StatefulWidget {
     required this.onSaveSettings,
     this.tasksCollapsed = false,
     this.onTasksCollapsedChanged,
+    this.agendaCollapsed = false,
+    this.onAgendaCollapsedChanged,
   });
 
   final DateTime now;
@@ -56,6 +58,10 @@ class TodayPanel extends StatefulWidget {
   final bool tasksCollapsed;
   final ValueChanged<bool>? onTasksCollapsedChanged;
 
+  /// Whether the agenda starts folded (remembered between openings).
+  final bool agendaCollapsed;
+  final ValueChanged<bool>? onAgendaCollapsedChanged;
+
   @override
   State<TodayPanel> createState() => _TodayPanelState();
 }
@@ -67,6 +73,12 @@ class _TodayPanelState extends State<TodayPanel> {
   bool _saving = false;
   String? _error;
   late bool _tasksCollapsed = widget.tasksCollapsed;
+  late bool _agendaCollapsed = widget.agendaCollapsed;
+
+  void _toggleAgenda() {
+    setState(() => _agendaCollapsed = !_agendaCollapsed);
+    widget.onAgendaCollapsedChanged?.call(_agendaCollapsed);
+  }
 
   void _toggleTasks() {
     setState(() => _tasksCollapsed = !_tasksCollapsed);
@@ -176,10 +188,17 @@ class _TodayPanelState extends State<TodayPanel> {
         else ...[
           if (data.weather != null)
             _Section(title: 'Météo', children: [Text(weatherLabel(data.weather!))]),
-          _Section(title: 'Agenda', children: [
-            if (data.events.isEmpty) const Text('Rien de prévu.', style: TextStyle(color: _muted)),
-            for (final e in data.events) _EventRow(event: e),
-          ]),
+          _Section(
+            title: 'Agenda',
+            collapsed: _agendaCollapsed,
+            onToggle: _toggleAgenda,
+            count: data.events.length,
+            children: [
+              if (data.events.isEmpty)
+                const Text('Rien de prévu.', style: TextStyle(color: _muted)),
+              for (final e in data.events) _EventRow(event: e),
+            ],
+          ),
           _Section(
             title: 'Tâches',
             collapsed: _tasksCollapsed,
